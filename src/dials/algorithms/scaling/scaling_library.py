@@ -18,6 +18,7 @@ from unittest.mock import Mock
 
 import numpy as np
 import pkg_resources
+from cctbx_miller_ext import split_unmerged
 
 import iotbx.merging_statistics
 from cctbx import crystal, miller, uctbx

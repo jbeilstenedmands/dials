@@ -22,6 +22,8 @@ from mmtbx.scaling.absolute_scaling import expected_intensity, scattering_inform
 from mmtbx.scaling.matthews import matthews_rupp
 from scitbx.array_family import flex
 
+from dials.algorithms.scaling.scaling_library import ExtendedDatasetStatistics
+
 logger = logging.getLogger("dials")
 
 
