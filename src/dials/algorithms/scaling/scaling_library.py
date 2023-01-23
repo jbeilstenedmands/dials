@@ -22,7 +22,6 @@ import pkg_resources
 
 import iotbx.merging_statistics
 from cctbx import crystal, miller, uctbx
-from cctbx.miller import split_unmerged
 from dxtbx.model import Experiment
 from dxtbx.util import ersatz_uuid4
 from libtbx import Auto, phil
@@ -607,11 +606,12 @@ class ExtendedDatasetStatistics(iotbx.merging_statistics.dataset_statistics):
                     / den
                 )
             else:
-
-            den = 0.5 * flex.sum(o.data() + c.data())
-            if den == 0:  # avoid zero division error
-                return -1
-            return (1.0 / math.sqrt(2)) * flex.sum(flex.abs(o.data() - c.data())) / den
+                den = 0.5 * flex.sum(o.data() + c.data())
+                if den == 0:  # avoid zero division error
+                    return -1
+                return (
+                    (1.0 / math.sqrt(2)) * flex.sum(flex.abs(o.data() - c.data())) / den
+                )
 
         assert this.binner is not None
         results = []
