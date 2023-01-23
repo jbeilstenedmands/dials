@@ -8,13 +8,11 @@ from jinja2 import ChoiceLoader, Environment, PackageLoader
 
 from cctbx import miller, uctbx
 from dxtbx.model import ExperimentList
+from iotbx.merging_statistics import dataset_statistics
 
 from dials.algorithms.clustering import plots as cluster_plotter
 from dials.algorithms.clustering.observers import uc_params_from_experiments
 from dials.algorithms.scaling.observers import make_merging_stats_plots
-
-# from iotbx.merging_statistics import dataset_statistics
-from dials.algorithms.scaling.scaling_library import ExtendedDatasetStatistics
 from dials.array_family import flex
 from dials.report.analysis import (
     format_statistics,
@@ -61,7 +59,10 @@ class MergingStatisticsData:
     def __str__(self):
         if not self.merging_statistics_result:
             return ""
-        stats_summary = make_merging_statistics_summary(self.merging_statistics_result)
+        stats_summary = make_merging_statistics_summary(
+            self.merging_statistics_result,
+            self.anom_merging_statistics_result,
+        )
         stats_summary += table_1_summary(
             self.merging_statistics_result,
             self.anom_merging_statistics_result,
@@ -177,58 +178,6 @@ def make_dano_table(anomalous_amplitudes):
             ]
         )
     return tabulate(rows, header)
-
-
-def make_additional_stats_table(stats_summary: MergingStatisticsData):
-
-    stats = stats_summary.merging_statistics_result
-    anom_stats = stats_summary.anom_merging_statistics_result
-    header = [
-        "Resolution range",
-    ]
-    rows = []
-    if not stats.r_split:
-        return ""
-    rows = [[] for _ in range(len(stats.binner.range_used()) + 1)]  # +1 for overall
-    for i, i_bin in enumerate(list(stats.binner.range_used())):
-        d_max_bin, d_min_bin = stats.binner.bin_d_range(i_bin)
-        rows[i].append(f"{d_max_bin:.3f} - {d_min_bin:.3f}")
-    rows[-1].append("Overall")
-    if stats.r_split:
-        header.append("r-split")
-        for (i, rsplit) in enumerate(stats.r_split_binned):
-            rows[i].append(f"{rsplit:.5f}" if rsplit is not None else "None")
-        rows[-1].append(f"{stats.r_split:.5f}")
-    if stats.wr_split:
-        header.append("r-split\n(\u03C3-weighted)")
-        for (i, wrsplit) in enumerate(stats.wr_split_binned):
-            rows[i].append(f"{wrsplit:.5f}" if wrsplit is not None else "None")
-        rows[-1].append(f"{stats.wr_split:.5f}")
-    if stats.wcc_half:
-        header.append("cc-half\n(\u03C3-weighted)")
-        for i, (cc, s) in enumerate(
-            zip(stats.wcc_half_binned, stats.wcc_half_significances)
-        ):
-            rows[i].append(f"{cc:.5f}" + "*" if s else f"{cc:.5f}")
-        rows[-1].append(
-            f"{stats.wcc_half:.5f}" + "*"
-            if stats.wcc_half_significance_overall
-            else f"{stats.wcc_half:.5f}"
-        )
-    if anom_stats.wcc_anom_overall:
-        header.append("cc-anom\n(\u03C3-weighted)")
-        for i, (cc, s) in enumerate(
-            zip(anom_stats.wcc_anom_binned, anom_stats.wcc_anom_significances)
-        ):
-            rows[i].append(f"{cc:.5f}" + "*" if s else f"{cc:.5f}")
-        rows[-1].append(
-            f"{anom_stats.wcc_anom_overall:.5f}" + "*"
-            if anom_stats.wcc_anom_significance_overall
-            else f"{anom_stats.wcc_anom_overall:.5f}"
-        )
-
-    output_ = "\n" + tabulate(rows, header)
-    return output_
 
 
 def make_dano_plots(anomalous_data):

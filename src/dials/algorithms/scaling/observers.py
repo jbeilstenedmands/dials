@@ -151,7 +151,7 @@ were considered for use when refining the scaling model.
         anom_stats, cut_stats, cut_anom_stats = (None, None, None)
         if not script.scaled_miller_array.space_group().is_centric():
             anom_stats = script.anom_merging_statistics_result
-        logger.info(make_merging_statistics_summary(stats))
+        logger.info(make_merging_statistics_summary(stats, anom_stats))
         try:
             if script.params.cut_data.d_min is None:
                 d_min = resolution_cc_half(

@@ -203,6 +203,7 @@ formats = {
     "Anomalous completeness": "%7.1f",
     "Anomalous multiplicity": "%7.1f",
     "Anomalous correlation": "%7.3f",
+    "Anomalous correlation(\u03C3-weighted)": "%7.3f",
     "Anomalous slope": "%7.3f",
     "dF/F": "%7.3f",
     "dI/s(dI)": "%7.3f",
@@ -320,6 +321,16 @@ def table_1_stats(
         "Anomalous correlation": "anom_half_corr",
         "Anomalous multiplicity": "mean_redundancy",
     }
+    anom_extra_key_to_var = {}
+    if anomalous_statistics.wcc_anom_binned:
+        anom_extra_key_to_var.update(
+            {
+                "Anomalous correlation(\u03C3-weighted)": {
+                    "overall": "wcc_anom_overall",
+                    "binned": "wcc_anom_binned",
+                }
+            }
+        )
 
     four_column_output = bool(selected_statistics)
 
@@ -390,13 +401,16 @@ def table_1_stats(
                 selected_anomalous_statistics.overall.delta_i_mean_over_sig_delta_i_mean
             ]
         generate_stats(
-            anom_key_to_var, anomalous_statistics, selected_anomalous_statistics
+            anom_key_to_var,
+            anomalous_statistics,
+            selected_anomalous_statistics,
+            anom_extra_key_to_var,
         )
 
     return stats
 
 
-def make_merging_statistics_summary(dataset_statistics):
+def make_merging_statistics_summary(dataset_statistics, anomalous_statistics=None):
     """Format merging statistics information into an output string."""
 
     text = "\n            ----------Merging statistics by resolution bin----------           \n\n"
@@ -419,7 +433,28 @@ def make_merging_statistics_summary(dataset_statistics):
         r_split_vals = list(dataset_statistics.r_split_binned) + [
             dataset_statistics.r_split
         ]
+        wrsplit_vals = list(dataset_statistics.wr_split_binned) + [
+            dataset_statistics.wr_split
+        ]
+        wcchalf_vals = list(dataset_statistics.wcc_half_binned) + [
+            dataset_statistics.wcc_half
+        ]
+        cc_sigs = dataset_statistics.wcc_half_significances + [
+            dataset_statistics.wcc_half_significance_overall
+        ]
         names.insert(-2, "r_splt")
+        names = names + ["wr_splt", "wcc1/2"]
+        if anomalous_statistics:
+            wccano_vals = list(anomalous_statistics.wcc_anom_binned) + [
+                anomalous_statistics.wcc_anom_overall
+            ]
+            ccano_sigs = anomalous_statistics.wcc_anom_significances + [
+                anomalous_statistics.wcc_anom_significance_overall
+            ]
+            names.append("wcc_ano")
+        else:
+            wccano_vals = []
+            ccano_sigs = []
     n_headers = len(names)  # 14 or 15
     vals = [[] for _ in range(n_headers)]
     for i, stats in enumerate(
@@ -428,8 +463,14 @@ def make_merging_statistics_summary(dataset_statistics):
         txt = stats.format().split()
         if r_split_vals:
             txt.insert(-2, f"{r_split_vals[i]:.3f}")
+            txt += [
+                f"{wrsplit_vals[i]:.3f}",
+                f"{wcchalf_vals[i]:.3f}{'*' if cc_sigs[i] else ''}",
+            ]
+            if wccano_vals:
+                txt.append(f"{wccano_vals[i]:.3f}{'*' if ccano_sigs[i] else ''}")
             if len(txt) < n_headers:
-                txt.insert(-3, "0.000")  # handle null r_anom
+                txt.insert(-6, "0.000")  # handle null r_anom
         else:
             if len(txt) < n_headers:
                 txt.insert(-2, "0.000")  # handle null r_anom
