@@ -269,14 +269,24 @@ class cosym(Subject):
             )
             refl["miller_index"] = cb_op.apply(refl["miller_index"])
         # Allow for the case where some datasets are filtered out.
+        to_delete = []
         if len(reindexing_ops) < len(self._experiments):
-            to_delete = [
+            to_delete += [
                 i for i in range(len(self._experiments)) if i not in unique_ids
             ]
+            logger.info(f"Removing {len(to_delete)} datasets which were prefiltered")
+        if self.cosym_analysis.cluster_filter_sel:
+            extra = [
+                id_
+                for id_, s in zip(unique_ids, self.cosym_analysis.cluster_filter_sel)
+                if not s
+            ]
+            logger.info(
+                f"Removing {len(extra)} datasets which were cluster outliers (nonisomorphous)"
+            )
+            to_delete += extra
+        if to_delete:
             for idx in sorted(to_delete, reverse=True):
-                logger.info(
-                    f"Removing dataset {idx} as unable to determine reindexing operator"
-                )
                 del self._experiments[idx]
                 del self._reflections[idx]
 

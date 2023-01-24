@@ -86,6 +86,9 @@ min_pairs = 3
   .help = 'Minimum number of pairs for inclusion of correlation coefficient in calculation of Rij matrix.'
   .short_caption = "Minimum number of pairs"
 
+fit_clusters = False
+  .type = bool
+
 minimization
   .short_caption = "Minimization"
 {
@@ -131,6 +134,7 @@ class CosymAnalysis(symmetry_base, Subject):
             If None, a high density cluster point is chosen.
         """
         self.seed_dataset = seed_dataset
+        self.cluster_filter_sel = None
         if self.seed_dataset:
             self.seed_dataset = int(self.seed_dataset)
             assert (
@@ -297,8 +301,9 @@ class CosymAnalysis(symmetry_base, Subject):
             max_calls=self.params.minimization.max_calls,
         )
         self._principal_component_analysis()
-
         self._analyse_symmetry()
+        if self.params.fit_clusters:
+            self._fit_clusters()
 
     @Subject.notify_event(event="optimised")
     def _optimise(self, engine, max_iterations=None, max_calls=None):
@@ -346,6 +351,122 @@ class CosymAnalysis(symmetry_base, Subject):
         if self.target.dim > 3:
             pca.n_components = 3
         self.coords_reduced = pca.fit_transform(self.coords)
+
+    def _fit_clusters(self):
+        x = self.coords[:, 0]
+        y = self.coords[:, 1]
+        import math
+        from dataclasses import dataclass
+
+        import numpy as np
+        from sklearn.mixture import GaussianMixture
+
+        @dataclass
+        class ClusterData:
+            centre: tuple
+            sigmas: tuple
+
+        def fit_cosym_data(x, y, n_clusters=2):
+            gmm = GaussianMixture(n_components=n_clusters)
+            r = (x**2 + y**2) ** 0.5
+            phi = np.arctan2(y, x)
+            tofit = np.array([[i, j] for i, j in zip(r, phi)])
+            gmm.fit(tofit)
+
+            r1 = gmm.means_[0, 0]
+            p1 = gmm.means_[0, 1]
+            r2 = gmm.means_[1, 0]
+            p2 = gmm.means_[1, 1]
+
+            # did it succeed? look at fit sigma of phi centre
+            sigma_p1 = gmm.covariances_[0][1][1] ** 0.5
+            sigma_p2 = gmm.covariances_[1][1][1] ** 0.5
+            centres_diff = abs(p1 - p2) * 180 / math.pi
+            sigmas_diff = (sigma_p1 + sigma_p2) * 180 / math.pi
+            if centres_diff > 2.0 * sigmas_diff:
+                print(
+                    f"Clusters well separated: {centres_diff:.3f} > {2.0 * sigmas_diff:.3f}"
+                )
+            else:
+                print(
+                    f"Clusters not well separated: {centres_diff:.3f} <= {2.0 * sigmas_diff:.3f}"
+                )
+
+            # the cluster closest to +x is called cluster 1
+            if p1 < p2:
+                mean1 = (r1, p1)  # cluster centre in r, phi
+                mean2 = (r2, p2)  # cluster centre in r, phi
+                cluster_1_idx = 0
+                cluster_2_idx = 1
+            else:
+                mean1 = (r2, p2)  # cluster centre in r, phi
+                mean2 = (r1, p1)  # cluster centre in r, phi
+                cluster_1_idx = 1
+                cluster_2_idx = 0
+
+            probs = gmm.predict_proba(tofit)
+            membership = probs[:, cluster_1_idx] > 0.5
+
+            # calculate variance of points in cluster
+            def cluster_variances(cluster_index):
+                sel = probs[:, cluster_index] > 0.95
+                r_sel = r[sel]
+                p_sel = phi[sel]
+                sigma_r = np.var(r_sel) ** 0.5
+                sigma_phi = np.var(p_sel) ** 0.5  # * 180 / math.pi
+                return sigma_r, sigma_phi
+
+            sigma_r1, sigma_phi1 = cluster_variances(cluster_1_idx)  # not phi in rads
+            sigma_r2, sigma_phi2 = cluster_variances(cluster_2_idx)
+
+            c1 = ClusterData(mean1, (sigma_r1, sigma_phi1))
+            c2 = ClusterData(mean2, (sigma_r2, sigma_phi2))
+
+            return [c1, c2], membership
+
+        clusters, membership = fit_cosym_data(x, y)
+        # membership True if in cluster 1
+        print(clusters)
+
+        def filter_data(x, y, clusters, membership, sigma_level=2):
+            r = (x**2 + y**2) ** 0.5
+            phi = np.arctan2(y, x)
+            sel = (
+                phi > (clusters[0].centre[1] + sigma_level * clusters[0].sigmas[1])
+            ) & (phi < (clusters[1].centre[1] - sigma_level * clusters[1].sigmas[1]))
+            sel2 = membership & (
+                r < (clusters[0].centre[0] - sigma_level * clusters[0].sigmas[0])
+            )
+            sel2 |= (~membership) & (
+                r < (clusters[1].centre[0] - sigma_level * clusters[1].sigmas[0])
+            )
+            return sel | sel2
+
+        sel = flex.bool(list(filter_data(x, y, clusters, membership, 2)))
+        membership = flex.bool(list(membership))
+
+        @dataclass
+        class cluster_result:
+            clusters: list
+            membership: flex.array
+            sel: flex.array
+
+        cluster_seed = self.cluster_seed
+        phi_seed = math.atan2(cluster_seed[1], cluster_seed[0])
+
+        if abs(clusters[0].centre[1] - phi_seed) < abs(
+            clusters[1].centre[1] - phi_seed
+        ):
+            # seed closest to first cluster
+            bad = sel.select(membership)
+            # cluster_filter_sel is True if good
+            self.cluster_filter_sel = ~bad
+        else:
+            bad = sel.select(~membership)
+            # cluster_filter_sel is True if good
+            self.cluster_filter_sel = ~bad
+
+        # self.cluster_filter = cluster_result(clusters, membership, sel)
 
     @Subject.notify_event(event="analysed_symmetry")
     def _analyse_symmetry(self):
@@ -412,6 +533,7 @@ class CosymAnalysis(symmetry_base, Subject):
             xis = np.array([X[i]])
         coordstr = ",".join(str(round(i, 4)) for i in xis[0])
         logger.debug(f"Coordinate of cluster seed dataset: {coordstr}")
+        self.cluster_seed = xis[0]
 
         for j in range(n_datasets):
             sel = np.where(dataset_ids == j)
