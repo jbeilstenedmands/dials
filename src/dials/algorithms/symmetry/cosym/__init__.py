@@ -384,11 +384,11 @@ class CosymAnalysis(symmetry_base, Subject):
             centres_diff = abs(p1 - p2) * 180 / math.pi
             sigmas_diff = (sigma_p1 + sigma_p2) * 180 / math.pi
             if centres_diff > 2.0 * sigmas_diff:
-                print(
+                logger.info(
                     f"Clusters well separated: {centres_diff:.3f} > {2.0 * sigmas_diff:.3f}"
                 )
             else:
-                print(
+                logger.info(
                     f"Clusters not well separated: {centres_diff:.3f} <= {2.0 * sigmas_diff:.3f}"
                 )
 
@@ -422,11 +422,13 @@ class CosymAnalysis(symmetry_base, Subject):
             c1 = ClusterData(mean1, (sigma_r1, sigma_phi1))
             c2 = ClusterData(mean2, (sigma_r2, sigma_phi2))
 
+            logger.info(c1)
+            logger.info(c2)
+
             return [c1, c2], membership
 
         clusters, membership = fit_cosym_data(x, y)
         # membership True if in cluster 1
-        print(clusters)
 
         def filter_data(x, y, clusters, membership, sigma_level=2):
             r = (x**2 + y**2) ** 0.5
