@@ -25,7 +25,9 @@
 #include <dials/algorithms/profile_model/gaussian_rs/coordinate_system.h>
 #include <dials/algorithms/shoebox/mask_code.h>
 #include <dials/array_family/reflection_table.h>
+#include <dials/array_family/scitbx_shared_and_versa.h>
 #include <dials/error.h>
+#include <dxtbx/model/detector.h>
 
 using namespace boost::python;
 
@@ -94,6 +96,46 @@ namespace dials { namespace algorithms { namespace boost_python {
     return boost::math::quantile(dist, p);
   }
 
+  vec2<double> rse(const mat3<double> &R,
+                   const vec2<double> &mbar,
+                   const vec2<double> &xobs,
+                   const float norm_s0,
+                   const Detector &detector) {
+    // double norm_s0 = 1.0;
+    vec3<double> s1;
+    vec3<double> s3;
+    s1[0] = (R[0] * mbar[0]) + (R[3] * mbar[1]) + (R[6] * norm_s0);
+    s1[1] = (R[1] * mbar[0]) + (R[4] * mbar[1]) + (R[7] * norm_s0);
+    s1[2] = (R[2] * mbar[0]) + (R[5] * mbar[1]) + (R[8] * norm_s0);
+    s3[0] = (R[0] * xobs[0]) + (R[3] * xobs[1]) + (R[6] * norm_s0);
+    s3[1] = (R[1] * xobs[0]) + (R[4] * xobs[1]) + (R[7] * norm_s0);
+    s3[2] = (R[2] * xobs[0]) + (R[5] * xobs[1]) + (R[8] * norm_s0);
+    vec2<double> xyzcal = detector[0].get_ray_intersection_px(s1);
+    vec2<double> xyzobs = detector[0].get_ray_intersection_px(s3);
+    double rx2 = pow(xyzcal[0] - xyzobs[0], 2);
+    double ry2 = pow(xyzcal[1] - xyzobs[1], 2);
+    vec2<double> res{rx2, ry2};
+    return res;
+  }
+
+  boost::python::list calc_s1_s2(const af::shared<cctbx::miller::index<>> miller_idx,
+                                 const mat3<double> A,
+                                 const vec3<double> s0) {
+    double len_s0 = s0.length();
+    af::shared<vec3<double>> s1(miller_idx.size());
+    af::shared<vec3<double>> s2(miller_idx.size());
+    for (std::size_t i = 0; i < miller_idx.size(); ++i) {
+      vec3<double> r = A * miller_idx[i];
+      vec3<double> s2_i = r + s0;
+      s2[i] = s2_i;
+      s1[i] = len_s0 * s2_i.normalize();
+    }
+    boost::python::list result;
+    result.append(s1);
+    result.append(s2);
+    return result;
+  }
+
   /**
    * Perform the change of basis from lab coordinates to the kabsch coordinate
    * system
@@ -146,7 +188,7 @@ namespace dials { namespace algorithms { namespace boost_python {
      * @param h The list of miller indices
      * @returns The reflection table
      */
-    af::reflection_table predict(af::const_ref<cctbx::miller::index<> > h) const {
+    af::reflection_table predict(af::const_ref<cctbx::miller::index<>> h) const {
       // Get the beam and detector
       const double TINY = 1e-7;
       DIALS_ASSERT(experiment_.get_beam() != NULL);
@@ -163,12 +205,12 @@ namespace dials { namespace algorithms { namespace boost_python {
       Panel panel = detector[0];
 
       // Initialise some arrays
-      af::shared<cctbx::miller::index<> > miller_indices;
+      af::shared<cctbx::miller::index<>> miller_indices;
       af::shared<bool> entering;
-      af::shared<vec3<double> > s1_list;
-      af::shared<vec3<double> > s2_list;
-      af::shared<vec3<double> > xyzcalpx;
-      af::shared<vec3<double> > xyzcalmm;
+      af::shared<vec3<double>> s1_list;
+      af::shared<vec3<double>> s2_list;
+      af::shared<vec3<double>> xyzcalpx;
+      af::shared<vec3<double>> xyzcalmm;
       af::shared<std::size_t> panel_list;
       af::shared<int> experiment_id;
 
@@ -339,8 +381,8 @@ namespace dials { namespace algorithms { namespace boost_python {
      */
     void compute(af::reflection_table reflections) const {
       // Get some array from the reflection table
-      af::const_ref<vec3<double> > s1 = reflections["s1"];
-      af::const_ref<vec3<double> > s2 = reflections["s2"];
+      af::const_ref<vec3<double>> s1 = reflections["s1"];
+      af::const_ref<vec3<double>> s2 = reflections["s2"];
       af::const_ref<std::size_t> panel = reflections["panel"];
       af::ref<int6> bbox = reflections["bbox"];
 
@@ -550,9 +592,9 @@ namespace dials { namespace algorithms { namespace boost_python {
      */
     void compute(af::reflection_table reflections) const {
       // Get some array from the reflection table
-      af::const_ref<vec3<double> > s1 = reflections["s1"];
-      af::const_ref<vec3<double> > s2 = reflections["s2"];
-      af::ref<Shoebox<> > sbox = reflections["shoebox"];
+      af::const_ref<vec3<double>> s1 = reflections["s1"];
+      af::const_ref<vec3<double>> s2 = reflections["s2"];
+      af::ref<Shoebox<>> sbox = reflections["shoebox"];
 
       // Compute quantile
       double D = chisq_quantile(2, probability_);
@@ -634,7 +676,7 @@ namespace dials { namespace algorithms { namespace boost_python {
       mat2<double> Sbar_inv = Sbar.inverse();
 
       // Get the mask array
-      af::ref<int, af::c_grid<3> > mask = sbox.mask.ref();
+      af::ref<int, af::c_grid<3>> mask = sbox.mask.ref();
 
       // Get the bounding box
       int x0 = sbox.bbox[0];
@@ -754,36 +796,38 @@ namespace dials { namespace algorithms { namespace boost_python {
   BOOST_PYTHON_MODULE(dials_algorithms_profile_model_ellipsoid_ext) {
     def("chisq_quantile", &chisq_quantile);
     def("chisq_pdf", &chisq_pdf);
+    def("rse", &rse);
+    def("calc_s1_s2", &calc_s1_s2);
 
     class_<PredictorBase>("PredictorBase", no_init)
       .def("predict", &PredictorBase::predict);
 
-    class_<PredictorSimple, bases<PredictorBase> >("PredictorSimple", no_init)
+    class_<PredictorSimple, bases<PredictorBase>>("PredictorSimple", no_init)
       .def(init<Experiment, mat3<double>, double>());
 
-    class_<PredictorAngular, bases<PredictorBase> >("PredictorAngular", no_init)
+    class_<PredictorAngular, bases<PredictorBase>>("PredictorAngular", no_init)
       .def(init<Experiment, mat3<double>, double>());
 
     class_<BBoxCalculatorBase>("BBoxCalculatorBase", no_init)
       .def("compute", &BBoxCalculatorBase::compute);
 
-    class_<BBoxCalculatorSimple, bases<BBoxCalculatorBase> >("BBoxCalculatorSimple",
-                                                             no_init)
+    class_<BBoxCalculatorSimple, bases<BBoxCalculatorBase>>("BBoxCalculatorSimple",
+                                                            no_init)
       .def(init<Experiment, mat3<double>, double, int>());
 
-    class_<BBoxCalculatorAngular, bases<BBoxCalculatorBase> >("BBoxCalculatorAngular",
-                                                              no_init)
+    class_<BBoxCalculatorAngular, bases<BBoxCalculatorBase>>("BBoxCalculatorAngular",
+                                                             no_init)
       .def(init<Experiment, mat3<double>, double, int>());
 
     class_<MaskCalculatorBase>("MaskCalculatorBase", no_init)
       .def("compute", &MaskCalculatorBase::compute);
 
-    class_<MaskCalculatorSimple, bases<MaskCalculatorBase> >("MaskCalculatorSimple",
-                                                             no_init)
+    class_<MaskCalculatorSimple, bases<MaskCalculatorBase>>("MaskCalculatorSimple",
+                                                            no_init)
       .def(init<Experiment, mat3<double>, double>());
 
-    class_<MaskCalculatorAngular, bases<MaskCalculatorBase> >("MaskCalculatorAngular",
-                                                              no_init)
+    class_<MaskCalculatorAngular, bases<MaskCalculatorBase>>("MaskCalculatorAngular",
+                                                             no_init)
       .def(init<Experiment, mat3<double>, double>());
   }
 

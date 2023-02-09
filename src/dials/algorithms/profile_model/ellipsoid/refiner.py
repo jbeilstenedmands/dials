@@ -12,7 +12,10 @@ from numpy.linalg import det, inv, norm
 from dxtbx import flumpy
 from scitbx import linalg, matrix
 
-from dials.algorithms.profile_model.ellipsoid import mosaicity_from_eigen_decomposition
+from dials.algorithms.profile_model.ellipsoid import (
+    mosaicity_from_eigen_decomposition,
+    rse,
+)
 from dials.algorithms.profile_model.ellipsoid.model import (
     compute_change_of_basis_operation,
 )
@@ -180,7 +183,7 @@ class ReflectionLikelihood(object):
         modelstate = ReflectionModelState(model, s0, h)
         self.modelstate = modelstate
         self.s0 = s0.reshape(3, 1)
-        self.norm_s0 = norm(s0)
+        self.norm_s0 = float(norm(s0))
         self.sp = sp.reshape(3, 1)
         self.h = np.array([h], dtype=np.float64).reshape(3, 1)
         self.ctot = ctot
@@ -340,12 +343,14 @@ class ReflectionLikelihood(object):
         ctot = self.ctot
 
         # Get info about marginal distribution
-        S22 = self.S[2, 2]
-        dS22 = [self.dS[2, 2, i] for i in range(self.dS.shape[2])]
-        S22_inv = 1 / S22
+        S22 = self.S[2, 2]  # number
+        dS22 = [
+            self.dS[2, 2, i] for i in range(self.dS.shape[2])
+        ]  # depends on no of params
+        S22_inv = 1 / S22  # number
 
         # Get info about conditional distribution
-        Sbar = self.conditional.sigma()
+        Sbar = self.conditional.sigma()  # 2x2 array
         dSbar = self.conditional.first_derivatives_of_sigma()  # list of 2x2 arrays
         dmbar = self.conditional.first_derivatives_of_mean()  # list of 2x1 arrays
         Sbar_inv = inv(Sbar)
@@ -438,34 +443,21 @@ class MaximumLikelihoodTarget(object):
         The RMSD in pixels
 
         """
-        mse = np.array([0.0, 0.0], dtype=np.float64)
+        mse_x = 0.0
+        mse_y = 0.0
         for i in range(len(self.data)):
-            R = self.data[i].R
-            mbar = self.data[i].conditional.mean()
-            xobs = self.data[i].mobs
+            R = matrix.sqr(flex.double(self.data[i].R.tolist()))  # (3x3 numpy array)
+            mbar = self.data[i].conditional.mean()  # 2x1 array
+            xobs = self.data[i].mobs  # # 2x1 array
             norm_s0 = self.data[i].norm_s0
-
-            s1 = np.matmul(
-                R.T,
-                np.array([mbar[0, 0], mbar[1, 0], norm_s0], dtype=np.float64).reshape(
-                    3, 1
-                ),
-            )
-            s3 = np.matmul(
-                R.T,
-                np.array([xobs[0, 0], xobs[1, 0], norm_s0], dtype=np.float64).reshape(
-                    3, 1
-                ),
-            )
-            s1 = matrix.col(flumpy.from_numpy(s1[:, 0]))
-            s3 = matrix.col(flumpy.from_numpy(s3[:, 0]))
-            xyzcal = self.model.experiment.detector[0].get_ray_intersection_px(s1)
-            xyzobs = self.model.experiment.detector[0].get_ray_intersection_px(s3)
-            r_x = xyzcal[0] - xyzobs[0]
-            r_y = xyzcal[1] - xyzobs[1]
-            mse += np.array([r_x**2, r_y**2])
-        mse /= len(self.data)
-        return np.sqrt(mse)
+            xobs = (xobs[0, 0], xobs[1, 0])
+            mbar = (mbar[0, 0], mbar[1, 0])
+            rse_i = rse(R, mbar, xobs, norm_s0, self.model.experiment.detector)
+            mse_x += rse_i[0]
+            mse_y += rse_i[1]
+        mse_x /= len(self.data)
+        mse_y /= len(self.data)
+        return np.sqrt(np.array([mse_x, mse_y]))
 
     def log_likelihood(self):
         """
