@@ -22,10 +22,12 @@
 #include <scitbx/matrix/eigensystem.h>
 #include <dxtbx/model/experiment.h>
 #include <dials/model/data/shoebox.h>
+#include <dials/model/data/image_volume.h>
 #include <dials/algorithms/profile_model/gaussian_rs/coordinate_system.h>
 #include <dials/algorithms/shoebox/mask_code.h>
 #include <dials/array_family/reflection_table.h>
 #include <dials/array_family/scitbx_shared_and_versa.h>
+#include <scitbx/array_family/tiny_types.h>
 #include <dials/error.h>
 #include <dxtbx/model/detector.h>
 
@@ -43,6 +45,7 @@ namespace dials { namespace algorithms { namespace boost_python {
   using dxtbx::model::Detector;
   using dxtbx::model::Experiment;
   using dxtbx::model::Panel;
+  using model::ImageVolume;
   using scitbx::mat2;
   using scitbx::mat3;
   using scitbx::sym_mat2;
@@ -151,6 +154,77 @@ namespace dials { namespace algorithms { namespace boost_python {
     vec3<double> e3 = s2.normalize();
     mat3<double> R(e1[0], e1[1], e1[2], e2[0], e2[1], e2[2], e3[0], e3[1], e3[2]);
     return R;
+  }
+
+  boost::python::tuple reflection_statistics(const Panel panel,
+                                             const vec3<double> xyzobs,
+                                             const double s0_length,
+                                             const vec3<double> s0,
+                                             const Shoebox<> sbox) {
+    typedef Shoebox<>::float_type float_type;
+    vec2<double> p1(xyzobs[0], xyzobs[1]);
+    vec3<double> sp = panel.get_pixel_lab_coord(p1).normalize() * s0_length;
+    mat3<double> R = compute_change_of_basis_operation(s0, sp);
+
+    const af::versa<int, af::c_grid<3>> mask = sbox.mask;
+    const af::const_ref<float_type, af::c_grid<3>> data = sbox.data.const_ref();
+    const af::versa<float_type, af::c_grid<3>> bgrd = sbox.background;
+    int i0 = sbox.bbox[0];
+    int j0 = sbox.bbox[2];
+    int n1 = data.accessor()[1];
+    int n2 = data.accessor()[2];
+
+    af::versa<float_type, af::c_grid<3>> X(af::c_grid<3>(n1, n2, 2));
+    af::versa<float_type, af::c_grid<2>> C(af::c_grid<2>(n1, n2));
+    float_type ctot = 0;
+    for (int j = 0; j < n1; ++j) {
+      for (int i = 0; i < n2; ++i) {
+        float_type c = data(0, j, i) - bgrd(0, j, i);
+        if (c > 0) {
+          if ((mask(0, j, i) & (1 | 4)) == (1 | 4)) {
+            ctot += c;
+            int ii = i + i0;
+            int jj = j + j0;
+            vec2<double> sc(ii + 0.5, jj + 0.5);
+            vec3<double> s = panel.get_pixel_lab_coord(sc).normalize() * s0_length;
+            vec3<double> e = R * s;
+            X(j, i, 0) = e[0];
+            X(j, i, 1) = e[1];
+            C(j, i) = c;
+          }
+        }
+      }
+    }
+    // check ctot > 0
+
+    // now sum to get Xbar
+    vec2<double> xbar;
+    for (int j = 0; j < n1; ++j) {
+      for (int i = 0; i < n2; ++i) {
+        xbar[0] += X(j, i, 0) * C(j, i);
+        xbar[1] += X(j, i, 1) * C(j, i);
+      }
+    }
+    xbar[0] = xbar[0] / ctot;
+    xbar[1] = xbar[1] / ctot;
+
+    mat2<double> Sobs;
+    for (int j = 0; j < n1; ++j) {
+      for (int i = 0; i < n2; ++i) {
+        float_type c_i = C(j, i);
+        vec2<double> x_i(X(j, i, 0) - xbar[0], X(j, i, 1) - xbar[1]);
+        Sobs[0] += pow(x_i[0], 2) * c_i;
+        Sobs[1] += x_i[0] * x_i[1] * c_i;
+        Sobs[2] += x_i[0] * x_i[1] * c_i;
+        Sobs[3] += pow(x_i[1], 2) * c_i;
+      }
+    }
+    Sobs[0] = Sobs[0] / ctot;
+    Sobs[1] = Sobs[1] / ctot;
+    Sobs[2] = Sobs[2] / ctot;
+    Sobs[3] = Sobs[3] / ctot;
+
+    return boost::python::make_tuple(sp, ctot, xbar, Sobs);
   }
 
   /**
@@ -798,6 +872,7 @@ namespace dials { namespace algorithms { namespace boost_python {
     def("chisq_pdf", &chisq_pdf);
     def("rse", &rse);
     def("calc_s1_s2", &calc_s1_s2);
+    def("reflection_statistics", &reflection_statistics);
 
     class_<PredictorBase>("PredictorBase", no_init)
       .def("predict", &PredictorBase::predict);

@@ -14,6 +14,7 @@ from scitbx import linalg, matrix
 
 from dials.algorithms.profile_model.ellipsoid import (
     mosaicity_from_eigen_decomposition,
+    reflection_statistics,
     rse,
 )
 from dials.algorithms.profile_model.ellipsoid.model import (
@@ -964,6 +965,75 @@ class Refiner(object):
         return self.state.parameter_labels
 
 
+def calc_values(panel, xyzobs, s0_length, s0, sbox):
+    # The vector to the pixel centroid
+    sp = np.array(panel.get_pixel_lab_coord(xyzobs[0:2]), dtype=np.float64).reshape(
+        3, 1
+    )
+    sp *= s0_length / norm(sp)
+
+    # Compute change of basis
+    R = compute_change_of_basis_operation(s0, sp)
+
+    # Get data and compute total counts
+    data = sbox.data
+    mask = sbox.mask
+    bgrd = sbox.background
+
+    # Get array of vectors
+    i0 = sbox.bbox[0]
+    j0 = sbox.bbox[2]
+    assert data.all()[0] == 1
+    X = np.zeros(shape=(data.all()[1:]) + (2,), dtype=np.float64)
+    C = np.zeros(shape=data.all()[1:], dtype=np.float64)
+    ctot = 0
+    for j in range(data.all()[1]):
+        for i in range(data.all()[2]):
+            c = data[0, j, i] - bgrd[0, j, i]
+            # print(data[0, j, i], bgrd[0, j, i])
+            if mask[0, j, i] & (1 | 4) == (1 | 4) and c > 0:
+                ctot += c
+                ii = i + i0
+                jj = j + j0
+                s = np.array(
+                    panel.get_pixel_lab_coord((ii + 0.5, jj + 0.5)),
+                    dtype=np.float64,
+                ).reshape(3, 1)
+                s *= s0_length / norm(s)
+                e = np.matmul(R, s)
+                X[j, i, :] = e[0:2, 0]
+                C[j, i] = c
+
+    # Check we have a sensible number of counts
+    if ctot <= 0:
+        raise BadSpotForIntegrationException(
+            "Strong spot found with <= 0 counts! Check spotfinding results"
+        )
+
+    # Compute the mean vector
+    C = np.expand_dims(C, axis=2)
+    xbar = C * X
+    xbar = xbar.reshape(-1, xbar.shape[-1])
+    xbar = xbar.sum(axis=0)
+    xbar /= ctot
+
+    xbar = xbar.reshape(2, 1)
+
+    # Compute the covariance matrix
+    Sobs = np.array([[0.0, 0.0], [0.0, 0.0]], dtype=np.float64)
+    for j in range(X.shape[0]):
+        for i in range(X.shape[1]):
+            x = np.array(X[j, i], dtype=np.float64).reshape(2, 1)
+            Sobs += np.matmul(x - xbar, (x - xbar).T) * C[j, i, 0]
+
+    Sobs /= ctot
+    if (Sobs[0, 0] <= 0) or (Sobs[1, 1] <= 0):
+        raise BadSpotForIntegrationException(
+            "Strong spot variance <= 0. Check spotfinding results"
+        )
+    return sp, ctot, xbar, Sobs
+
+
 class RefinerData(object):
     """
     A class for holding the data needed for the profile refinement
@@ -1006,88 +1076,37 @@ class RefinerData(object):
         logger.info(
             "Computing observed covariance for %d reflections" % len(reflections)
         )
-        s0_length = norm(s0)
+        s0_length = float(norm(s0))
+        s0 = experiment.beam.get_s0()
         assert len(experiment.detector) == 1
         panel = experiment.detector[0]
         sbox = reflections["shoebox"]
         xyzobs = reflections["xyzobs.px.value"]
         for r in range(len(reflections)):
 
-            # The vector to the pixel centroid
-            sp = np.array(
-                panel.get_pixel_lab_coord(xyzobs[r][0:2]), dtype=np.float64
-            ).reshape(3, 1)
-            sp *= s0_length / norm(sp)
-
-            # Compute change of basis
-            R = compute_change_of_basis_operation(s0, sp)
-
-            # Get data and compute total counts
-            data = sbox[r].data
-            mask = sbox[r].mask
-            bgrd = sbox[r].background
-
-            # Get array of vectors
-            i0 = sbox[r].bbox[0]
-            j0 = sbox[r].bbox[2]
-            assert data.all()[0] == 1
-            X = np.zeros(shape=(data.all()[1:]) + (2,), dtype=np.float64)
-            C = np.zeros(shape=data.all()[1:], dtype=np.float64)
-            ctot = 0
-            for j in range(data.all()[1]):
-                for i in range(data.all()[2]):
-                    c = data[0, j, i] - bgrd[0, j, i]
-                    if mask[0, j, i] & (1 | 4) == (1 | 4) and c > 0:
-                        ctot += c
-                        ii = i + i0
-                        jj = j + j0
-                        s = np.array(
-                            panel.get_pixel_lab_coord((ii + 0.5, jj + 0.5)),
-                            dtype=np.float64,
-                        ).reshape(3, 1)
-                        s *= s0_length / norm(s)
-                        e = np.matmul(R, s)
-                        X[j, i, :] = e[0:2, 0]
-                        C[j, i] = c
-
-            # Check we have a sensible number of counts
-            if ctot <= 0:
-                raise BadSpotForIntegrationException(
-                    "Strong spot found with <= 0 counts! Check spotfinding results"
-                )
-
-            # Compute the mean vector
-            C = np.expand_dims(C, axis=2)
-            xbar = C * X
-            xbar = xbar.reshape(-1, xbar.shape[-1]).sum(axis=0)
-            xbar /= ctot
-
-            xbar = xbar.reshape(2, 1)
-
-            # Compute the covariance matrix
-            Sobs = np.array([[0.0, 0.0], [0.0, 0.0]], dtype=np.float64)
-            for j in range(X.shape[0]):
-                for i in range(X.shape[1]):
-                    x = np.array(X[j, i], dtype=np.float64).reshape(2, 1)
-                    Sobs += np.matmul(x - xbar, (x - xbar).T) * C[j, i, 0]
-
-            Sobs /= ctot
-            if (Sobs[0, 0] <= 0) or (Sobs[1, 1] <= 0):
-                raise BadSpotForIntegrationException(
-                    "Strong spot variance <= 0. Check spotfinding results"
-                )
-
+            sp, ctot, xbar, Sobs = reflection_statistics(
+                panel, xyzobs[r], s0_length, s0, sbox[r]
+            )
+            # print(sp, ctot, xbar, Sobs)
+            # s0 = np.array([experiment.beam.get_s0()], dtype=np.float64).reshape(3, 1)
+            # sp, ctot, xbar, Sobs = calc_values(panel, xyzobs[r], s0_length, s0, sbox[r])
+            # print(sp, ctot, xbar, Sobs)
+            # assert 0
             # Add to the lists
-            sp_list[:, r] = sp[:, 0]
+            sp_list[:, r] = sp  # [:, 0]
             ctot_list[r] = ctot
-            mobs_list[:, r] = xbar[:, 0]
-            Sobs_list[:, :, r] = Sobs
+            mobs_list[:, r] = xbar  # [:, 0]
+            Sobs_list[0, 0, r] = Sobs[0]
+            Sobs_list[0, 1, r] = Sobs[1]
+            Sobs_list[1, 0, r] = Sobs[2]
+            Sobs_list[1, 1, r] = Sobs[3]
 
         # Print some information
         logger.info("")
         logger.info(
             "I_min = %.2f, I_max = %.2f" % (np.min(ctot_list), np.max(ctot_list))
         )
+        s0 = np.array([experiment.beam.get_s0()], dtype=np.float64).reshape(3, 1)
 
         # Sometimes a single reflection might have an enormouse intensity for
         # whatever reason and since we weight by intensity, this can cause the
