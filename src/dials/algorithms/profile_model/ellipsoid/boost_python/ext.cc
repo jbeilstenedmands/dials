@@ -157,17 +157,17 @@ namespace dials { namespace algorithms { namespace boost_python {
   }
 
   af::shared<double> cpp_first_derivatives(double ctot,
-                                           const vec2<double> mobs,
-                                           const mat2<double> sobs,
+                                           const vec2<double> &mobs,
+                                           const mat2<double> &sobs,
                                            double S22,
-                                           af::ref<double> dS22,
+                                           const af::ref<double> &dS22,
                                            double mu2,
                                            double norm_s0,
-                                           const mat2<double> Sbar,
-                                           const vec2<double> mubar,
-                                           const af::ref<double, af::c_grid<3>> dSbar,
-                                           const af::ref<vec2<double>> dmBar,
-                                           af::ref<double> dep) {
+                                           const mat2<double> &Sbar,
+                                           const vec2<double> &mubar,
+                                           const af::ref<double, af::c_grid<3>> &dSbar,
+                                           const af::ref<vec2<double>> &dmBar,
+                                           const af::ref<double> &dep) {
     int n_param = dSbar.accessor()[0];
     double S22_inv = 1 / S22;
     mat2<double> Sbar_inv = Sbar.inverse();
@@ -205,11 +205,11 @@ namespace dials { namespace algorithms { namespace boost_python {
   af::versa<double, af::c_grid<2>> cpp_fisher_information(
     double ctot,
     double S22,
-    af::ref<double> dS22,
-    const mat2<double> Sbar,
-    af::ref<double> dmu,
-    af::ref<double, af::c_grid<3>> dSbar,
-    af::ref<vec2<double>> dmBar) {
+    const af::ref<double> &dS22,
+    const mat2<double> &Sbar,
+    const af::ref<double> &dmu,
+    const af::ref<double, af::c_grid<3>> &dSbar,
+    const af::ref<vec2<double>> &dmBar) {
     int n1 = dS22.size();
     double S22_inv = 1 / S22;
     mat2<double> Sbar_inv = Sbar.inverse();
@@ -256,36 +256,52 @@ namespace dials { namespace algorithms { namespace boost_python {
     return -0.5 * (m_lnL + c_lnL);
   }
 
-  mat2<double> cpp_compute_dSbar(
+  af::versa<double, af::c_grid<3>> cpp_compute_dSbar(
     const mat3<double> &S,
-    const mat3<double> &dS
+    const af::ref<double, af::c_grid<3>> &dS
   ){
-    vec2<double> S12(S[2], S[5]);
-    vec2<double> S21(S[6], S[7]);
-    double S22_inv = 1/S[8];
-    mat2<double> dS11(dS[0], dS[1], dS[3], dS[4]);
-    vec2<double> dS12(dS[2], dS[5]);
-    vec2<double> dS21(dS[6], dS[7]);
-    double dS22 = dS[8];
-    mat2<double> B(S12[0] * S21[0], S12[0] * S21[1], S12[1]*S21[0], S12[1]*S21[1]);
-    mat2<double> C(S12[0] * dS21[0], S12[0] * dS21[1], S12[1]*dS21[0], S12[1]*dS21[1]);
-    mat2<double> D(dS12[0] * S21[0], dS12[0] * S21[1], dS12[1]*S21[0], dS12[1]*S21[1]);
-    return dS11 + (B * dS22 * pow(S22_inv, 2)) - (C * S22_inv) -(D * S22_inv);
+    int n_derivs = dS.accessor()[2];
+    af::versa<double, af::c_grid<3>> dSbar(af::c_grid<3>(n_derivs, 2, 2));
+    for (int i=0;i<n_derivs;++i){
+      //#mat3<double> dS_this = 
+      vec2<double> S12(S[2], S[5]);
+      vec2<double> S21(S[6], S[7]);
+      double S22_inv = 1/S[8];
+      mat2<double> dS11(dS(0,0,i), dS(0,1,i), dS(1,0,i), dS(1,1,i));
+      vec2<double> dS12(dS(0,2,i), dS(1,2,i));
+      vec2<double> dS21(dS(2,0,i), dS(2,1,i));
+      double dS22 = dS(2,2,i);
+      mat2<double> B(S12[0] * S21[0], S12[0] * S21[1], S12[1]*S21[0], S12[1]*S21[1]);
+      mat2<double> C(S12[0] * dS21[0], S12[0] * dS21[1], S12[1]*dS21[0], S12[1]*dS21[1]);
+      mat2<double> D(dS12[0] * S21[0], dS12[0] * S21[1], dS12[1]*S21[0], dS12[1]*S21[1]);
+      mat2<double> dSbar_i = dS11 + (B * dS22 * pow(S22_inv, 2)) - (C * S22_inv) -(D * S22_inv);
+      dSbar(i,0,0) = dSbar_i(0, 0);
+      dSbar(i,1,0) = dSbar_i(1, 0);
+      dSbar(i,0,1) = dSbar_i(0, 1);
+      dSbar(i,1,1) = dSbar_i(1, 1);
+    }
+    return dSbar;
   }
 
-  vec2<double> cpp_compute_dmbar(
+  af::shared<vec2<double>> cpp_compute_dmbar(
     const mat3<double> &S,
-    const mat3<double> &dS,
-    const vec3<double> &dmu,
+    const af::ref<double, af::c_grid<3>> &dS,
+    const af::ref<double, af::c_grid<2>> &dmu,
     double epsilon
   ){
-    vec2<double> S12(S[2], S[5]);
-    double S22_inv = 1/S[8];
-    vec2<double> dS12(dS[2], dS[5]);
-    double dS22 = dS[8];
-    vec2<double> dmu1(dmu[0], dmu[1]);
-    double dep = -1.0 * dmu[2];
-    return dmu1 + (dS12 * S22_inv * epsilon) - (S12 * dS22 *  epsilon * pow(S22_inv,2)) + (S12 * S22_inv * dep);
+    int n_derivs = dS.accessor()[2];
+    af::shared<vec2<double>> dmbar(n_derivs);
+    for (int i=0;i<n_derivs;++i){
+      vec2<double> S12(S[2], S[5]);
+      double S22_inv = 1/S[8];
+      vec2<double> dS12(dS(0,2,i), dS(1,2,i));
+      double dS22 = dS(2,2,i);
+      vec2<double> dmu1(dmu(0,i), dmu(1,i));
+      double dep = -1.0 * dmu(2,i);
+      vec2<double> dmbar_i = dmu1 + (dS12 * S22_inv * epsilon) - (S12 * dS22 *  epsilon * pow(S22_inv,2)) + (S12 * S22_inv * dep);
+      dmbar[i] = dmbar_i;
+    }
+    return dmbar;
   }
 
   boost::python::tuple reflection_statistics(const Panel panel,

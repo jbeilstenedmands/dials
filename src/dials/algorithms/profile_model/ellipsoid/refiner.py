@@ -93,17 +93,17 @@ class ConditionalDistribution(object):
     def __init__(self, norm_s0, mu, dmu, S, dS):
         # norm_s0 is a float i.e. norm(s0)
         self._mu = mu  # 3x1 array
-        self._dmu = [(dmu[0,i], dmu[1,i], dmu[2,i]) for i in range(dmu.shape[1])]  # 3 x n array
+        self._dmu = dmu#[(dmu[0,i], dmu[1,i], dmu[2,i]) for i in range(dmu.shape[1])]  # 3 x n array
         #print(self._dmu)
         #assert 0
-        self._S = matrix.sqr(S.reshape((9,)))  # 3x3 array
-        self._dS = [matrix.sqr(dS[:, :, i].reshape((9,))) for i in range(dS.shape[2])]#  # 3 x 3 x n array
-
+        self._S = S#matrix.sqr(S.reshape((9,)))  # 3x3 array
+        self._dS = dS#[matrix.sqr(dS[:, :, i].reshape((9,))) for i in range(dS.shape[2])]#  # 3 x 3 x n array
+        #print(S)
         # Partition the covariance matrix
-        S11 = S[0:2, 0:2]
-        S12 = S[0:2, 2].reshape(2, 1)
-        S21 = S[2, 0:2].reshape(1, 2)
-        S22 = S[2, 2]
+        S11 = np.array([S[0], S[1], S[3], S[4]]).reshape(2, 2)#S[0:2, 0:2]
+        S12 = np.array([S[2], S[5]]).reshape(2, 1)#S[0:2, 2].reshape(2, 1)
+        S21 = np.array([S[6], S[7]]).reshape(1, 2)#S[2, 0:2].reshape(1, 2)
+        S22 = S[8]
 
         # The partitioned mean vector
         mu1 = mu[0:2, 0].reshape(2, 1)
@@ -156,14 +156,15 @@ class ConditionalDistribution(object):
                 for i in range(self._dS.shape[2])
             ]'''
 
-            dSbar_flex = flex.double(flex.grid(len(self._dS), 2, 2))
+            '''dSbar_flex = flex.double(flex.grid(len(self._dS), 2, 2))
             for i, dS in enumerate(self._dS):
                 dSb = cpp_compute_dSbar(self._S, dS)
                 dSbar_flex[i, 0, 0] = dSb[0]
                 dSbar_flex[i, 0, 1] = dSb[1]
                 dSbar_flex[i, 1, 0] = dSb[2]
                 dSbar_flex[i, 1, 1] = dSb[3]
-            self.dSbar = dSbar_flex
+            self.dSbar = dSbar_flex'''
+            self.dSbar = cpp_compute_dSbar(self._S, self._dS)
 
         return self.dSbar
 
@@ -182,8 +183,9 @@ class ConditionalDistribution(object):
             )'''
 
             #for i, (dS, dm) in enumerate(zip(self._dS, self._dmu)):
-            self.dmbar = flex.vec2_double(cpp_compute_dmbar(self._S, dS, dm, self.epsilon) for
-                (dS, dm) in zip(self._dS, self._dmu))
+            #self.dmbar = flex.vec2_double(cpp_compute_dmbar(self._S, dS, dm, self.epsilon) for
+            #    (dS, dm) in zip(self._dS, self._dmu))
+            self.dmbar = cpp_compute_dmbar(self._S, self._dS, self._dmu, self.epsilon)
 
         return self.dmbar
 
@@ -223,20 +225,22 @@ class ReflectionLikelihood(object):
         s2 = self.s0 + self.modelstate.get_r()
         # Rotate the mean vector
         self.mu = np.matmul(self.R, s2)
-        self.S = np.matmul(
-            np.matmul(self.R, modelstate.mosaicity_covariance_matrix), self.R.T
-        )  # const when not refining mosaicity
-        self.dS = rotate_mat3_double(
+        self.R_cctbx = matrix.sqr(self.R.flatten())
+        self.S = (
+            self.R_cctbx * matrix.sqr(modelstate.mosaicity_covariance_matrix.reshape((9,)))) * self.R_cctbx.transpose()
+        #np.matmul(
+        #    np.matmul(self.R, modelstate.mosaicity_covariance_matrix), self.R.T
+        #)  # const when not refining mosaicity
+        self.dS = flumpy.from_numpy(rotate_mat3_double(
             self.R, modelstate.get_dS_dp()
-        )  # const when not refining mosaicity?
-        self.dmu = rotate_vec3_double(
+        ))  # const when not refining mosaicity?
+        self.dmu = flumpy.from_numpy(rotate_vec3_double(
             self.R, modelstate.get_dr_dp()
-        )  # const when not refining uc/orientation?
+        ))  # const when not refining uc/orientation?
         # Construct the conditional distribution
         self.conditional = ConditionalDistribution(
             self.norm_s0, self.mu, self.dmu, self.S, self.dS
         )
-        self.R_cctbx = matrix.sqr(self.R.flatten())
 
     def update(self):
 
@@ -248,24 +252,27 @@ class ReflectionLikelihood(object):
 
         # Rotate the covariance matrix
         if not self.modelstate.state.is_mosaic_spread_fixed:
-            self.S = np.matmul(
-                np.matmul(self.R, self.modelstate.mosaicity_covariance_matrix), self.R.T
-            )  # const when not refining mosaicity
+            self.S = (
+            self.R_cctbx * matrix.sqr(self.modelstate.mosaicity_covariance_matrix.reshape((9,)))) * self.R_cctbx.transpose()
+
+            #np.matmul(
+            #    np.matmul(self.R, self.modelstate.mosaicity_covariance_matrix), self.R.T
+            #)  # const when not refining mosaicity
             #self.S =(self.R * self.modelstate.mosaicity_covariance_matrix) * self.R.transpose()
 
         # Rotate the first derivative matrices
         if not self.modelstate.state.is_mosaic_spread_fixed:
-            self.dS = rotate_mat3_double(
+            self.dS = flumpy.from_numpy(rotate_mat3_double(
                 self.R, self.modelstate.get_dS_dp()
-            )  # const when not refining mosaicity?
+            ))  # const when not refining mosaicity?
 
         # Rotate the first derivative of s2
         if (not self.modelstate.state.is_unit_cell_fixed) or not (
             self.modelstate.state.is_orientation_fixed
         ):
-            self.dmu = rotate_vec3_double(
+            self.dmu = flumpy.from_numpy(rotate_vec3_double(
                 self.R, self.modelstate.get_dr_dp()
-            )  # const when not refining uc/orientation?
+            ))  # const when not refining uc/orientation?
 
         # Construct the conditional distribution
         self.conditional = ConditionalDistribution(
@@ -284,7 +291,7 @@ class ReflectionLikelihood(object):
         Sobs = self.sobs
 
         # Get info about the marginal
-        S22 = self.S[2, 2]
+        S22 = self.S[8]
         S22_inv = 1 / S22
         mu2 = self.mu[2, 0]
 
@@ -343,8 +350,9 @@ class ReflectionLikelihood(object):
         Sobs = self.sobs
 
         # Get info about marginal distribution
-        S22 = self.S[2, 2]
-        dS22_vec = self.dS[2, 2, :]  # for i in range(self.dS.shape[2])]
+        S22 = self.S[8]
+        #dS22_vec = self.dS[2, 2, :]  # for i in range(self.dS.shape[2])]
+        dS22 = flex.double([self.dS[2,2,i] for i in range(self.dS.all()[2])])
         S22_inv = 1 / S22
         mu2 = self.mu[2, 0]
 
@@ -362,7 +370,8 @@ class ReflectionLikelihood(object):
         # Weights for marginal and conditional components
         m_w = ctot
         c_w = ctot
-        dep = -self.dmu[2, :]
+        #dep = -self.dmu[2, :]
+        dep = flex.double([-self.dmu[2,i] for i in range(self.dmu.all()[1])])
 
         # Compute the derivative wrt parameter i
         """I = np.array([[1.0, 0], [0, 1.0]], dtype=np.float64).reshape(2, 2)
@@ -376,7 +385,7 @@ class ReflectionLikelihood(object):
         V_vec = np.einsum("ij,ljk->ikl", Sbar_inv, dSbar)
         V_vec = c_w * np.einsum("ijl,ji->l", V_vec, V2)
         print(list(V_vec))"""
-        dS22 = flex.double(dS22_vec)
+        #dS22 = flex.double(dS22_vec)
         #Sbar = matrix.sqr(flex.double(Sbar.tolist()))
         '''dSbar_flex = flex.double(flex.grid(len(dSbar), 2, 2))
         for i in range(len(dSbar)):
@@ -387,7 +396,6 @@ class ReflectionLikelihood(object):
         '''dmbar_flex = flex.vec2_double(
             [(dmbar[i][0, 0], dmbar[i][1, 0]) for i in range(len(dmbar))]
         )'''
-
         V_CPP = cpp_first_derivatives(
             ctot,
             mobs,#(mobs[0, 0], mobs[1, 0]),
@@ -400,7 +408,7 @@ class ReflectionLikelihood(object):
             mubar,#[0, 0], mubar[1, 0]),
             dSbar_flex,
             dmbar_flex,
-            flex.double(dep),
+            dep,
         )
         return -0.5 * V_CPP
 
@@ -427,10 +435,11 @@ class ReflectionLikelihood(object):
         ctot = self.ctot
 
         # Get info about marginal distribution
-        S22 = self.S[2, 2]  # number
-        dS22 = [
-            self.dS[2, 2, i] for i in range(self.dS.shape[2])
-        ]  # depends on no of params
+        S22 = self.S[8]  # number
+        #dS22 = [
+        #    self.dS[2, 2, i] for i in range(self.dS.shape[2])
+        #]  # depends on no of params
+        dS22 = flex.double([self.dS[2,2,i] for i in range(self.dS.all()[2])])
         S22_inv = 1 / S22  # number
 
         # Get info about conditional distribution
@@ -439,7 +448,7 @@ class ReflectionLikelihood(object):
         dmbar_flex = self.conditional.first_derivatives_of_mean()  # list of 2x1 arrays
         #Sbar_inv = inv(Sbar)
         dmu = self.dmu
-        dmu2 = flex.double(self.dmu[2, :])
+        dmu2 = flex.double([self.dmu[2, i] for i in range(self.dmu.all()[1])])
 
         """# Weights for marginal and conditional components
         m_w = ctot
@@ -1070,7 +1079,7 @@ class Refiner(object):
         return self.state.parameter_labels
 
 
-def calc_values(panel, xyzobs, s0_length, s0, sbox):
+'''def calc_values(panel, xyzobs, s0_length, s0, sbox):
     # The vector to the pixel centroid
     sp = np.array(panel.get_pixel_lab_coord(xyzobs[0:2]), dtype=np.float64).reshape(
         3, 1
@@ -1136,7 +1145,7 @@ def calc_values(panel, xyzobs, s0_length, s0, sbox):
         raise BadSpotForIntegrationException(
             "Strong spot variance <= 0. Check spotfinding results"
         )
-    return sp, ctot, xbar, Sobs
+    return sp, ctot, xbar, Sobs'''
 
 
 class RefinerData(object):
@@ -1202,6 +1211,10 @@ class RefinerData(object):
             ctot_list[r] = ctot
             mobs_list[r] = xbar 
             Sobs_list[r] = Sobs # [:, 0]
+            #print(type(Sobs))
+            #print(type(sp))
+            #print(type(ctot))
+            #print(type(xbar))
             '''Sobs_list[0, 0, r] = Sobs[0]
             Sobs_list[0, 1, r] = Sobs[1]
             Sobs_list[1, 0, r] = Sobs[2]
