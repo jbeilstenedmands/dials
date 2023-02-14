@@ -156,6 +156,106 @@ namespace dials { namespace algorithms { namespace boost_python {
     return R;
   }
 
+  af::shared<double> cpp_first_derivatives(double ctot,
+                                           const vec2<double> mobs,
+                                           const mat2<double> sobs,
+                                           double S22,
+                                           af::ref<double> dS22,
+                                           double mu2,
+                                           double norm_s0,
+                                           const mat2<double> Sbar,
+                                           const vec2<double> mubar,
+                                           const af::ref<double, af::c_grid<3>> dSbar,
+                                           const af::ref<vec2<double>> dmBar,
+                                           af::ref<double> dep) {
+    int n_param = dSbar.accessor()[0];
+    double S22_inv = 1 / S22;
+    mat2<double> Sbar_inv = Sbar.inverse();
+    double epsilon = norm_s0 - mu2;
+    vec2<double> c_d = mobs - mubar;
+    mat2<double> I(1.0, 0.0, 0.0, 1.0);
+    mat2<double> cdcdT(
+      pow(c_d[0], 2), c_d[0] * c_d[1], c_d[0] * c_d[1], pow(c_d[1], 2));
+    mat2<double> V2 = I - (Sbar_inv * (sobs + cdcdT));
+    af::shared<double> V_vec(n_param, 0);
+    for (int i = 0; i < n_param; ++i) {
+      mat2<double> dSbar_i(
+        dSbar(i, 0, 0), dSbar(i, 0, 1), dSbar(i, 1, 0), dSbar(i, 1, 1));
+      mat2<double> Vvec = Sbar_inv * dSbar_i;
+      V_vec[i] =
+        ctot * (Vvec[0] * V2[0] + Vvec[1] * V2[2] + Vvec[2] * V2[1] + Vvec[3] * V2[3]);
+    }
+    for (int i = 0; i < n_param; ++i) {
+      V_vec[i] += ctot
+                  * (S22_inv * dS22[i] * (1 - (S22_inv * pow(epsilon, 2)))
+                     + (2 * S22_inv * epsilon * dep[i]));
+    }
+    for (int i = 0; i < n_param; ++i) {
+      mat2<double> Wvec(c_d[0] * dmBar[i][0],
+                        c_d[0] * dmBar[i][1],
+                        c_d[1] * dmBar[i][0],
+                        c_d[1] * dmBar[i][1]);
+      V_vec[i] -= 2.0 * ctot
+                  * (Wvec[0] * Sbar_inv[0] + Wvec[1] * Sbar_inv[2]
+                     + Wvec[2] * Sbar_inv[1] + Wvec[3] * Sbar_inv[3]);
+    }
+    return V_vec;
+  }
+
+  af::versa<double, af::c_grid<2>> cpp_fisher_information(
+    double ctot,
+    double S22,
+    af::ref<double> dS22,
+    const mat2<double> Sbar,
+    af::ref<double> dmu,
+    af::ref<double, af::c_grid<3>> dSbar,
+    af::ref<vec2<double>> dmBar) {
+    int n1 = dS22.size();
+    double S22_inv = 1 / S22;
+    mat2<double> Sbar_inv = Sbar.inverse();
+    af::versa<double, af::c_grid<2>> I(af::c_grid<2>(n1, n1));
+    for (int j = 0; j < n1; ++j) {
+      for (int i = 0; i < n1; ++i) {
+        mat2<double> dSbar_j(
+          dSbar(j, 0, 0), dSbar(j, 0, 1), dSbar(j, 1, 0), dSbar(j, 1, 1));
+        mat2<double> dSbar_i(
+          dSbar(i, 0, 0), dSbar(i, 0, 1), dSbar(i, 1, 0), dSbar(i, 1, 1));
+
+        double U = pow(S22_inv, 2) * dS22[j] * dS22[i];
+        double V = (((Sbar_inv * dSbar_j) * Sbar_inv) * dSbar_i).trace();
+        vec2<double> Y = Sbar_inv * dmBar[i];
+        double W = 2.0 * ((Y[0] * dmBar[j][0]) + (Y[1] * dmBar[j][1]));
+        double X = 2.0 * dmu[i] * S22_inv * dmu[j];
+        I(j, i) = 0.5 * ctot * (V + W + U + X);
+      }
+    }
+    return I;
+  }
+
+  double cpp_log_likelihood(double ctot,
+                            const vec2<double> &mobs,
+                            const mat2<double> &sobs,
+                            const mat2<double> &Sbar,
+                            const vec2<double> &mubar,
+                            double mu2,
+                            double S22,
+                            double norm_s0) {
+    double S22_inv = 1.0 / S22;
+    mat2<double> Sbar_inv = Sbar.inverse();
+    double Sbar_det = Sbar.determinant();
+    // marginal likelihood
+    double m_d = norm_s0 - mu2;
+    double m_lnL = ctot * (std::log(S22) + (S22_inv * pow(m_d, 2)));
+    // conditional likelihood
+    vec2<double> c_d = mobs - mubar;
+    mat2<double> cdcdT(
+      pow(c_d[0], 2), c_d[0] * c_d[1], c_d[0] * c_d[1], pow(c_d[1], 2));
+    mat2<double> y = Sbar_inv * (sobs + cdcdT);
+    double c_lnL = ctot * (std::log(Sbar_det) + y[0] + y[3]);
+    // return the joint likelihood
+    return -0.5 * (m_lnL + c_lnL);
+  }
+
   boost::python::tuple reflection_statistics(const Panel panel,
                                              const vec3<double> xyzobs,
                                              const double s0_length,
@@ -873,6 +973,9 @@ namespace dials { namespace algorithms { namespace boost_python {
     def("rse", &rse);
     def("calc_s1_s2", &calc_s1_s2);
     def("reflection_statistics", &reflection_statistics);
+    def("cpp_log_likelihood", &cpp_log_likelihood);
+    def("cpp_fisher_information", &cpp_fisher_information);
+    def("cpp_first_derivatives", &cpp_first_derivatives);
 
     class_<PredictorBase>("PredictorBase", no_init)
       .def("predict", &PredictorBase::predict);

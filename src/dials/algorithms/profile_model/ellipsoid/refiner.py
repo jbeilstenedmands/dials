@@ -13,6 +13,9 @@ from dxtbx import flumpy
 from scitbx import linalg, matrix
 
 from dials.algorithms.profile_model.ellipsoid import (
+    cpp_first_derivatives,
+    cpp_fisher_information,
+    cpp_log_likelihood,
     mosaicity_from_eigen_decomposition,
     reflection_statistics,
     rse,
@@ -261,7 +264,19 @@ class ReflectionLikelihood(object):
         # Get info about the conditional
         Sbar = self.conditional.sigma()
         mubar = self.conditional.mean()
-        Sbar_inv = inv(Sbar)
+
+        return cpp_log_likelihood(
+            ctot,
+            (mobs[0, 0], mobs[1, 0]),
+            matrix.sqr(flex.double(Sobs.tolist())),
+            matrix.sqr(flex.double(Sbar.tolist())),
+            (mubar[0, 0], mubar[1, 0]),
+            mu2,
+            S22,
+            self.norm_s0,
+        )
+
+        """Sbar_inv = inv(Sbar)
         Sbar_det = det(Sbar)
 
         # Weights for marginal and conditional components
@@ -281,7 +296,10 @@ class ReflectionLikelihood(object):
 
         # Return the joint likelihood
         jLL = -0.5 * (m_lnL + c_lnL)
-        return jLL
+        print(jLL)
+        print(val1)
+        assert 0
+        return jLL"""
 
     def first_derivatives(self):
         """
@@ -313,28 +331,62 @@ class ReflectionLikelihood(object):
         # Weights for marginal and conditional components
         m_w = ctot
         c_w = ctot
+        dep = -self.dmu[2, :]
 
         # Compute the derivative wrt parameter i
-        I = np.array([[1.0, 0], [0, 1.0]], dtype=np.float64).reshape(2, 2)
+        """I = np.array([[1.0, 0], [0, 1.0]], dtype=np.float64).reshape(2, 2)
 
         V1 = Sobs + np.matmul(c_d, c_d.T)
         V2 = I - np.matmul(Sbar_inv, V1)
 
         dSbar = np.array(dSbar)
         dmbar_vec = np.array(dmbar)
-
+        
         V_vec = np.einsum("ij,ljk->ikl", Sbar_inv, dSbar)
         V_vec = c_w * np.einsum("ijl,ji->l", V_vec, V2)
-        dep = -self.dmu[2, :]
-        U_vec = m_w * (
+        print(list(V_vec))"""
+        dS22 = flex.double(dS22_vec)
+        Sbar = matrix.sqr(flex.double(Sbar.tolist()))
+        dSbar_flex = flex.double(flex.grid(len(dSbar), 2, 2))
+        for i in range(len(dSbar)):
+            dSbar_flex[i, 0, 0] = dSbar[i][0, 0]
+            dSbar_flex[i, 0, 1] = dSbar[i][0, 1]
+            dSbar_flex[i, 1, 0] = dSbar[i][1, 0]
+            dSbar_flex[i, 1, 1] = dSbar[i][1, 1]
+        dmbar_flex = flex.vec2_double(
+            [(dmbar[i][0, 0], dmbar[i][1, 0]) for i in range(len(dmbar))]
+        )
+
+        V_CPP = cpp_first_derivatives(
+            ctot,
+            (mobs[0, 0], mobs[1, 0]),
+            matrix.sqr(flex.double(Sobs.tolist())),
+            S22,
+            dS22,
+            mu2,
+            self.norm_s0,
+            Sbar,
+            (mubar[0, 0], mubar[1, 0]),
+            dSbar_flex,
+            dmbar_flex,
+            flex.double(dep),
+        )
+        return -0.5 * V_CPP
+
+        """U_vec = m_w * (
             S22_inv * dS22_vec * (1.0 - S22_inv * epsilon**2)
             + 2 * S22_inv * epsilon * dep
         )
+        
         W_vec = np.einsum("ij,lkj->ikl", c_d, dmbar_vec)
         W_vec = -2.0 * c_w * np.einsum("ij,jil->l", Sbar_inv, W_vec)
-
+        print(list(V_vec + U_vec + W_vec))
+        print(list(V_CPP))
+        assert 0
         dL = -0.5 * (U_vec + V_vec + W_vec)
-        return dL
+        print(dL.shape)
+        assert 0
+        return dL"""
 
     def fisher_information(self):
         """
@@ -356,8 +408,9 @@ class ReflectionLikelihood(object):
         dmbar = self.conditional.first_derivatives_of_mean()  # list of 2x1 arrays
         Sbar_inv = inv(Sbar)
         dmu = self.dmu
+        dmu2 = flex.double(self.dmu[2, :])
 
-        # Weights for marginal and conditional components
+        """# Weights for marginal and conditional components
         m_w = ctot
         c_w = ctot
 
@@ -389,9 +442,29 @@ class ReflectionLikelihood(object):
                     )
                 )
                 X = 2 * dmu[2, i] * S22_inv * dmu[2, j]
-                I[j, i] = 0.5 * c_w * (V + W) + 0.5 * m_w * (U + X)
+                I[j, i] = 0.5 * c_w * (V + W) + 0.5 * m_w * (U + X)"""
+        # print(list(I))
+        dS22 = flex.double(dS22)
+        Sbar = matrix.sqr(flex.double(Sbar.tolist()))
+        dSbar_flex = flex.double(flex.grid(len(dSbar), 2, 2))
+        for i in range(len(dSbar)):
+            dSbar_flex[i, 0, 0] = dSbar[i][0, 0]
+            dSbar_flex[i, 0, 1] = dSbar[i][0, 1]
+            dSbar_flex[i, 1, 0] = dSbar[i][1, 0]
+            dSbar_flex[i, 1, 1] = dSbar[i][1, 1]
+        dmbar_flex = flex.vec2_double(
+            [(dmbar[i][0, 0], dmbar[i][1, 0]) for i in range(len(dmbar))]
+        )
+        # for i in range(len(dmbar)):
+        #    dmbar_flex[i,:,:] = dmbar[i]
+        # print(list(dSbar_flex))
+        # print(dSbar)
+        v1 = cpp_fisher_information(ctot, S22, dS22, Sbar, dmu2, dSbar_flex, dmbar_flex)
+        return v1
 
-        return I
+        # print(list(v1))
+        # assert 0
+        # return I
 
 
 class MaximumLikelihoodTarget(object):
