@@ -256,6 +256,38 @@ namespace dials { namespace algorithms { namespace boost_python {
     return -0.5 * (m_lnL + c_lnL);
   }
 
+  mat2<double> cpp_compute_dSbar(
+    const mat3<double> &S,
+    const mat3<double> &dS
+  ){
+    vec2<double> S12(S[2], S[5]);
+    vec2<double> S21(S[6], S[7]);
+    double S22_inv = 1/S[8];
+    mat2<double> dS11(dS[0], dS[1], dS[3], dS[4]);
+    vec2<double> dS12(dS[2], dS[5]);
+    vec2<double> dS21(dS[6], dS[7]);
+    double dS22 = dS[8];
+    mat2<double> B(S12[0] * S21[0], S12[0] * S21[1], S12[1]*S21[0], S12[1]*S21[1]);
+    mat2<double> C(S12[0] * dS21[0], S12[0] * dS21[1], S12[1]*dS21[0], S12[1]*dS21[1]);
+    mat2<double> D(dS12[0] * S21[0], dS12[0] * S21[1], dS12[1]*S21[0], dS12[1]*S21[1]);
+    return dS11 + (B * dS22 * pow(S22_inv, 2)) - (C * S22_inv) -(D * S22_inv);
+  }
+
+  vec2<double> cpp_compute_dmbar(
+    const mat3<double> &S,
+    const mat3<double> &dS,
+    const vec3<double> &dmu,
+    double epsilon
+  ){
+    vec2<double> S12(S[2], S[5]);
+    double S22_inv = 1/S[8];
+    vec2<double> dS12(dS[2], dS[5]);
+    double dS22 = dS[8];
+    vec2<double> dmu1(dmu[0], dmu[1]);
+    double dep = -1.0 * dmu[2];
+    return dmu1 + (dS12 * S22_inv * epsilon) - (S12 * dS22 *  epsilon * pow(S22_inv,2)) + (S12 * S22_inv * dep);
+  }
+
   boost::python::tuple reflection_statistics(const Panel panel,
                                              const vec3<double> xyzobs,
                                              const double s0_length,
@@ -976,6 +1008,8 @@ namespace dials { namespace algorithms { namespace boost_python {
     def("cpp_log_likelihood", &cpp_log_likelihood);
     def("cpp_fisher_information", &cpp_fisher_information);
     def("cpp_first_derivatives", &cpp_first_derivatives);
+    def("cpp_compute_dSbar", &cpp_compute_dSbar);
+    def("cpp_compute_dmbar", &cpp_compute_dmbar);
 
     class_<PredictorBase>("PredictorBase", no_init)
       .def("predict", &PredictorBase::predict);
