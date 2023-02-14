@@ -21,6 +21,7 @@ from dials.algorithms.profile_model.ellipsoid import (
     rse,
     cpp_compute_dmbar,
     cpp_compute_dSbar,
+    cpp_rotate_mat3_double,
 )
 from dials.algorithms.profile_model.ellipsoid.model import (
     compute_change_of_basis_operation,
@@ -227,13 +228,13 @@ class ReflectionLikelihood(object):
         self.mu = np.matmul(self.R, s2)
         self.R_cctbx = matrix.sqr(self.R.flatten())
         self.S = (
-            self.R_cctbx * matrix.sqr(modelstate.mosaicity_covariance_matrix.reshape((9,)))) * self.R_cctbx.transpose()
+            (self.R_cctbx * modelstate.mosaicity_covariance_matrix) * self.R_cctbx.transpose())
         #np.matmul(
         #    np.matmul(self.R, modelstate.mosaicity_covariance_matrix), self.R.T
         #)  # const when not refining mosaicity
-        self.dS = flumpy.from_numpy(rotate_mat3_double(
-            self.R, modelstate.get_dS_dp()
-        ))  # const when not refining mosaicity?
+        self.dS = cpp_rotate_mat3_double(
+            self.R_cctbx, modelstate.get_dS_dp()
+        )  # const when not refining mosaicity?
         self.dmu = flumpy.from_numpy(rotate_vec3_double(
             self.R, modelstate.get_dr_dp()
         ))  # const when not refining uc/orientation?
@@ -253,7 +254,7 @@ class ReflectionLikelihood(object):
         # Rotate the covariance matrix
         if not self.modelstate.state.is_mosaic_spread_fixed:
             self.S = (
-            self.R_cctbx * matrix.sqr(self.modelstate.mosaicity_covariance_matrix.reshape((9,)))) * self.R_cctbx.transpose()
+            (self.R_cctbx * self.modelstate.mosaicity_covariance_matrix) * self.R_cctbx.transpose())
 
             #np.matmul(
             #    np.matmul(self.R, self.modelstate.mosaicity_covariance_matrix), self.R.T
@@ -262,9 +263,9 @@ class ReflectionLikelihood(object):
 
         # Rotate the first derivative matrices
         if not self.modelstate.state.is_mosaic_spread_fixed:
-            self.dS = flumpy.from_numpy(rotate_mat3_double(
-                self.R, self.modelstate.get_dS_dp()
-            ))  # const when not refining mosaicity?
+            self.dS = cpp_rotate_mat3_double(
+                self.R_cctbx, self.modelstate.get_dS_dp()
+            )  # const when not refining mosaicity?
 
         # Rotate the first derivative of s2
         if (not self.modelstate.state.is_unit_cell_fixed) or not (
@@ -917,7 +918,7 @@ class FisherScoringMaximumLikelihood(FisherScoringMaximumLikelihoodBase):
 
         # Get some matrices
         U = self.model.U_matrix.flatten()
-        M = self.model.mosaicity_covariance_matrix.flatten()
+        M = list(self.model.mosaicity_covariance_matrix)
 
         # Print some information
         format_string1 = "  Unit cell: (%.3f, %.3f, %.3f, %.3f, %.3f, %.3f)"
@@ -1055,7 +1056,7 @@ class Refiner(object):
         if not self.state.is_mosaic_spread_fixed:
             logger.info("\nDecomposition of Sigma_M:")
             print_eigen_values_and_vectors(
-                matrix.sqr(flumpy.from_numpy(self.state.mosaicity_covariance_matrix))
+                self.state.mosaicity_covariance_matrix
             )
 
         # Save the history

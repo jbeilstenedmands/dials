@@ -9,7 +9,10 @@ from numpy.linalg import norm
 from dxtbx import flumpy
 from scitbx import linalg, matrix
 
-from dials.algorithms.profile_model.ellipsoid import mosaicity_from_eigen_decomposition
+from dials.algorithms.profile_model.ellipsoid import (
+    mosaicity_from_eigen_decomposition,
+    calc_ds_dp,
+)
 from dials.algorithms.refinement.parameterisation.crystal_parameters import (
     CrystalOrientationParameterisation,
     CrystalUnitCellParameterisation,
@@ -75,9 +78,8 @@ class Simple1MosaicityParameterisation(BaseParameterisation):
 
         """
         psq = self.params[0] ** 2
-        return np.array(
-            [[psq, 0, 0], [0, psq, 0], [0, 0, psq]],
-            dtype=np.float64,
+        return matrix.sqr(
+            (psq, 0, 0, 0, psq, 0, 0, 0, psq)
         )
 
     def first_derivatives(self) -> np.array:
@@ -93,7 +95,7 @@ class Simple1MosaicityParameterisation(BaseParameterisation):
     def mosaicity(self) -> Dict:
         """One value for mosaicity for Simple1"""
         decomp = linalg.eigensystem.real_symmetric(
-            matrix.sqr(flumpy.from_numpy(self.sigma())).as_flex_double_matrix()
+            self.sigma().as_flex_double_matrix()
         )
         v = list(mosaicity_from_eigen_decomposition(decomp.values()))
         return {"spherical": v[0]}
@@ -126,20 +128,19 @@ class Simple6MosaicityParameterisation(BaseParameterisation):
         Compute the covariance matrix of the MVN from the parameters
 
         """
-        M = np.array(
-            [
-                [self.params[0], 0, 0],
-                [self.params[1], self.params[2], 0],
-                [self.params[3], self.params[4], self.params[5]],
-            ],
-            dtype=np.float64,
+        M = matrix.sqr(
+            (
+                self.params[0], 0, 0,
+                self.params[1], self.params[2], 0,
+                self.params[3], self.params[4], self.params[5]
+            )
         )
-        return np.matmul(M, M.T)
+        return M * M.transpose()
 
     def mosaicity(self) -> Dict:
         """Three components for mosaicity for Simple6"""
         decomp = linalg.eigensystem.real_symmetric(
-            matrix.sqr(flumpy.from_numpy(self.sigma())).as_flex_double_matrix()
+            self.sigma().as_flex_double_matrix()
         )
         vals = list(mosaicity_from_eigen_decomposition(decomp.values()))
         min_m = min(vals)
@@ -242,15 +243,14 @@ class Angular2MosaicityParameterisation(BaseParameterisation):
         """
         p1sq = self.params[0] ** 2
         p2sq = self.params[1] ** 2
-        return np.array(
-            [[p1sq, 0, 0], [0, p1sq, 0], [0, 0, p2sq]],
-            dtype=np.float64,
+        return matrix.sqr(
+            (p1sq, 0, 0, 0, p1sq, 0, 0, 0, p2sq)
         )
 
     def mosaicity(self) -> Dict:
         """Two unique components of mosaicity"""
         decomp = linalg.eigensystem.real_symmetric(
-            matrix.sqr(flumpy.from_numpy(self.sigma())).as_flex_double_matrix()
+            self.sigma().as_flex_double_matrix()
         )
         m = mosaicity_from_eigen_decomposition(decomp.values())
         v = decomp.vectors()
@@ -315,12 +315,12 @@ class Angular4MosaicityParameterisation(BaseParameterisation):
         aa = self.params[0] ** 2
         bcsq = self.params[1] ** 2 + self.params[2] ** 2
         dd = self.params[3] ** 2
-        return np.array([[aa, ab, 0.0], [ab, bcsq, 0], [0, 0, dd]], dtype=np.float64)
+        return matrix.sqr((aa, ab, 0.0, ab, bcsq, 0, 0, 0, dd))
 
     def mosaicity(self) -> Dict:
         """Three components of mosaicity"""
         decomp = linalg.eigensystem.real_symmetric(
-            matrix.sqr(flumpy.from_numpy(self.sigma())).as_flex_double_matrix()
+            self.sigma().as_flex_double_matrix()
         )
         m = mosaicity_from_eigen_decomposition(decomp.values())
         v = decomp.vectors()
@@ -345,7 +345,7 @@ class Angular4MosaicityParameterisation(BaseParameterisation):
         # d2 = [[0, b1, 0], [b1, 2 * b2, 0], [0, 0, 0]]
         # d3 = [[0, 0, 0], [0, 2 * b3, 0], [0, 0, 0]]
         # d4 = [[0, 0, 0], [0, 0, 0], [0, 0, 2 * b4]]
-        ds = np.array(
+        '''ds = np.array(
             [
                 [2 * b1, b2, 0, b2, 0, 0, 0, 0, 0],
                 [0, b1, 0, b1, 2 * b2, 0, 0, 0, 0],
@@ -353,7 +353,14 @@ class Angular4MosaicityParameterisation(BaseParameterisation):
                 [0, 0, 0, 0, 0, 0, 0, 0, 2 * b4],
             ],
             dtype=np.float64,
-        ).reshape(4, 3, 3)
+        ).reshape(4, 3, 3)'''
+        ds = flex.double([
+            2 * b1, b2, 0, b2, 0, 0, 0, 0, 0,
+            0, b1, 0, b1, 2 * b2, 0, 0, 0, 0,
+            0, 0, 0, 0, 2 * b3, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 2 * b4
+        ])
+        ds.reshape(flex.grid(4,3,3))
         return ds
 
 
@@ -620,7 +627,8 @@ class ReflectionModelState(object):
 
         # The array of derivatives
         self._dr_dp = np.zeros(shape=(3, n_params), dtype=np.float64)
-        self._ds_dp = np.zeros(shape=(3, 3, n_params), dtype=np.float64)
+        #self._ds_dp = np.zeros(shape=(3, 3, n_params), dtype=np.float64)
+        self._ds_dp = flex.double(flex.grid(3,3,n_params), 0)
         self._dl_dp = flex.double(n_params)
 
         if self.state.is_mosaic_spread_angular:
@@ -630,6 +638,11 @@ class ReflectionModelState(object):
             q2 = np.cross(norm_r, q1)
             q2 /= norm(q2)
             self._Q = np.array([q1, q2, norm_r], dtype=np.float64).reshape(3, 3)
+            self._Q_cctbx = matrix.sqr((
+                    q1[0], q1[1], q1[2],
+                    q2[0], q2[1], q2[2],
+                    norm_r[0], norm_r[1], norm_r[2]
+            ))
         self._recalc_sigma()
         self._recalc_sigma_lambda()
         self.update()
@@ -649,7 +662,15 @@ class ReflectionModelState(object):
                 q2 = np.cross(norm_r, q1)
                 q2 /= norm(q2)
                 self._Q = np.array([q1, q2, norm_r], dtype=np.float64).reshape(3, 3)
-            self._sigma = np.matmul(np.matmul(self._Q.T, M), self._Q)
+                #print(self._Q)
+                self._Q_cctbx = matrix.sqr((
+                    q1[0], q1[1], q1[2],
+                    q2[0], q2[1], q2[2],
+                    norm_r[0], norm_r[1], norm_r[2]
+                ))
+            #M_np = np.array(list(M), dtype=np.float64).reshape(3, 3)
+            #self._sigma = np.matmul(np.matmul(self._Q.T, M_np), self._Q)
+            self._sigma = (self._Q_cctbx.transpose() * M) * self._Q_cctbx
         else:
             self._sigma = M  #
 
@@ -695,14 +716,16 @@ class ReflectionModelState(object):
         # Compute derivatives w.r.t M parameters
         if not state.is_mosaic_spread_fixed:
             dM_dp = self.state.dM_dp
-            n_M_params = dM_dp.shape[0]  # state.M_params.size
-            if state.is_mosaic_spread_angular:
+            n_M_params = dM_dp.all()[0]  # state.M_params.size
+            '''if state.is_mosaic_spread_angular:
                 QTMQ = np.einsum("ij,mjk,kl->ilm", self._Q.T, dM_dp, self._Q)
                 self._ds_dp[:, :, n_tot : n_tot + n_M_params] = QTMQ
             else:
                 self._ds_dp[:, :, n_tot : n_tot + n_M_params] = np.transpose(
                     dM_dp, axes=(1, 2, 0)
-                )
+                )'''
+            self._ds_dp = calc_ds_dp(dM_dp, self._Q_cctbx, n_tot, self._ds_dp.all()[2],state.is_mosaic_spread_angular)
+            #print(self._ds_dp)
             n_tot += n_M_params
         # Compute derivatives   w.r.t L parameters
         if not state.is_wavelength_spread_fixed:

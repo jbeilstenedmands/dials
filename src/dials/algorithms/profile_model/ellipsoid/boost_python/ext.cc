@@ -202,6 +202,45 @@ namespace dials { namespace algorithms { namespace boost_python {
     return V_vec;
   }
 
+  af::versa<double, af::c_grid<3>> calc_ds_dp(
+    const af::ref<double, af::c_grid<3>> &dMdp,
+    const mat3<double> &Q,
+    int start,
+    int n_tot_params,
+    bool is_angular)
+  {
+    af::versa<double, af::c_grid<3>> ds_dp(af::c_grid<3>(3, 3, n_tot_params)); 
+    int n_M_params(dMdp.accessor()[0]);
+    if (is_angular){
+      mat3<double> QT = Q.transpose();
+      for (int i=0;i<n_M_params;++i){
+        mat3<double> dMdp_i(
+          dMdp(i,0,0), dMdp(i,0,1),dMdp(i,0,2),
+          dMdp(i,1,0), dMdp(i,1,1),dMdp(i,1,2),
+          dMdp(i,2,0), dMdp(i,2,1),dMdp(i,2,2)
+        );
+        mat3<double> dSdp_i((QT * dMdp_i) * Q);
+        int p_idx = i + start;
+        for (int j=0;j<3;++j){
+          for (int k=0;k<3;++k){
+            ds_dp(j,k,p_idx) = dSdp_i(j,k);
+          }
+        }
+      }
+    }
+    else {
+      for (int i=0;i<n_M_params;++i){
+          int p_idx = i + start;
+          for (int j=0;j<3;++j){
+            for (int k=0;k<3;++k){
+              ds_dp(j,k,p_idx) = dMdp(i, j,k);
+            }
+          }
+        }
+      }
+    return ds_dp;
+  }
+
   af::versa<double, af::c_grid<2>> cpp_fisher_information(
     double ctot,
     double S22,
@@ -254,6 +293,30 @@ namespace dials { namespace algorithms { namespace boost_python {
     double c_lnL = ctot * (std::log(Sbar_det) + y[0] + y[3]);
     // return the joint likelihood
     return -0.5 * (m_lnL + c_lnL);
+  }
+
+  af::versa<double, af::c_grid<3>> cpp_rotate_mat3_double(
+    const mat3<double> &R,
+    const af::ref<double, af::c_grid<3>> &S
+  ){
+    //assume first two dimensions of S are 3,3
+    int n = S.accessor()[2];
+    af::versa<double, af::c_grid<3>> rotated(af::c_grid<3>(3,3,n));
+    mat3<double> RT = R.transpose();
+    for (int i=0;i<n;++i){
+      mat3<double> S_i(
+        S(0,0,i), S(0,1,i), S(0,2,i),
+        S(1,0,i), S(1,1,i), S(1,2,i),
+        S(2,0,i), S(2,1,i), S(2,2,i)
+      );
+      mat3<double> S_r = (R * S_i) * RT;
+      for (int j=0;j<3;++j){
+        for (int k=0;k<3;++k){
+          rotated(j,k,i) = S_r(j,k);
+        }
+      }
+    }
+    return rotated;
   }
 
   af::versa<double, af::c_grid<3>> cpp_compute_dSbar(
@@ -1026,6 +1089,8 @@ namespace dials { namespace algorithms { namespace boost_python {
     def("cpp_first_derivatives", &cpp_first_derivatives);
     def("cpp_compute_dSbar", &cpp_compute_dSbar);
     def("cpp_compute_dmbar", &cpp_compute_dmbar);
+    def("calc_ds_dp", &calc_ds_dp);
+    def("cpp_rotate_mat3_double", &cpp_rotate_mat3_double);
 
     class_<PredictorBase>("PredictorBase", no_init)
       .def("predict", &PredictorBase::predict);

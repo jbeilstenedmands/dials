@@ -210,9 +210,8 @@ class ProfileModelBase(object):
 
         # Compute the eigen decomposition of the covariance matrix and check
         # largest eigen value
-        sqr_mat = matrix.sqr(flumpy.from_numpy(self.sigma()))
         eigen_decomposition = eigensystem.real_symmetric(
-            sqr_mat.as_flex_double_matrix()
+            self.sigma().as_flex_double_matrix()
         )
         L = eigen_decomposition.values()
         if L[0] > 1e-5:
@@ -223,11 +222,11 @@ class ProfileModelBase(object):
     def to_dict(self):
         """Convert the model to a dictionary."""
         params = list(self.parameterisation().parameters)
-        sigma = self.sigma()
+        sigma = list(self.sigma())
         return {
             "__id__": self.__class__.name,
             "parameters": params,
-            "sigma": sigma.tolist(),
+            "sigma": sigma,
         }
 
     @classmethod
@@ -254,7 +253,7 @@ class SimpleProfileModelBase(ProfileModelBase):
 
         """
         predictor = PredictorSimple(
-            experiments[0], matrix.sqr(flumpy.from_numpy(self.sigma())), probability
+            experiments[0], self.sigma(), probability
         )
         return predictor.predict(miller_indices)
 
@@ -264,7 +263,7 @@ class SimpleProfileModelBase(ProfileModelBase):
 
         """
         calculator = BBoxCalculatorSimple(
-            experiments[0], matrix.sqr(flumpy.from_numpy(self.sigma())), probability, 4
+            experiments[0], self.sigma(), probability, 4
         )
         calculator.compute(reflections)
 
@@ -274,7 +273,7 @@ class SimpleProfileModelBase(ProfileModelBase):
 
         """
         calculator = MaskCalculatorSimple(
-            experiments[0], matrix.sqr(flumpy.from_numpy(self.sigma())), probability
+            experiments[0], self.sigma(), probability
         )
         calculator.compute(reflections)
 
@@ -449,7 +448,7 @@ class AngularProfileModelBase(ProfileModelBase):
 
         """
         predictor = PredictorAngular(
-            experiments[0], matrix.sqr(flumpy.from_numpy(self.sigma())), probability
+            experiments[0], self.sigma(), probability
         )
         return predictor.predict(miller_indices)
 
@@ -459,7 +458,7 @@ class AngularProfileModelBase(ProfileModelBase):
 
         """
         calculator = BBoxCalculatorAngular(
-            experiments[0], matrix.sqr(flumpy.from_numpy(self.sigma())), probability, 4
+            experiments[0], self.sigma(), probability, 4
         )
         calculator.compute(reflections)
 
@@ -469,7 +468,7 @@ class AngularProfileModelBase(ProfileModelBase):
 
         """
         calculator = MaskCalculatorAngular(
-            experiments[0], matrix.sqr(flumpy.from_numpy(self.sigma())), probability
+            experiments[0], self.sigma(), probability
         )
         calculator.compute(reflections)
 
