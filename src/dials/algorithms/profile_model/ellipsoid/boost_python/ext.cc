@@ -202,6 +202,26 @@ namespace dials { namespace algorithms { namespace boost_python {
     return V_vec;
   }
 
+  mat3<double> recalc_sigma_angular(
+    const mat3<double> &M,
+    mat3<double> &Q,
+    mat3<double> &QT,
+    bool is_orientation_fixed,
+    bool is_unit_cell_fixed,
+    const vec3<double> &r,
+    const vec3<double> &norm_s0
+  ){
+    if (!is_orientation_fixed | !is_unit_cell_fixed){
+      vec3<double> norm_r = r.normalize();
+      vec3<double> q1 = norm_r.cross(norm_s0).normalize();
+      vec3<double> q2 = norm_r.cross(q1).normalize();
+      mat3<double> Q((q1[0], q1[1], q1[2], q2[0], q2[1], q2[2], norm_r[0], norm_r[1], norm_r[2]));
+      mat3<double> QT = Q.transpose();
+    }
+    mat3<double> sigma((QT * M) * Q);
+    return sigma;
+  }
+
   af::versa<double, af::c_grid<3>> calc_ds_dp(
     const af::ref<double, af::c_grid<3>> &dMdp,
     const mat3<double> &Q,
@@ -1149,6 +1169,7 @@ namespace dials { namespace algorithms { namespace boost_python {
     def("calc_dr_dp", &calc_dr_dp);
     def("cpp_rotate_mat3_double", &cpp_rotate_mat3_double);
     def("cpp_rotate_vec3_double", &cpp_rotate_vec3_double);
+    def("recalc_sigma_angular", &recalc_sigma_angular);
 
     class_<PredictorBase>("PredictorBase", no_init)
       .def("predict", &PredictorBase::predict);

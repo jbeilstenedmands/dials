@@ -13,6 +13,7 @@ from dials.algorithms.profile_model.ellipsoid import (
     mosaicity_from_eigen_decomposition,
     calc_ds_dp,
     calc_dr_dp,
+    recalc_sigma_angular,
 )
 from dials.algorithms.refinement.parameterisation.crystal_parameters import (
     CrystalOrientationParameterisation,
@@ -611,9 +612,14 @@ class ReflectionModelState(object):
 
         # Compute the reciprocal lattice vector
         self._h = h#np.array(h, dtype=np.float64)
-        self._r = matrix.col(state.A_matrix * self._h)#np.einsum("ij,j->i", state.A_matrix, self._h)
+        self._r = state.A_matrix * self._h#np.einsum("ij,j->i", state.A_matrix, self._h)
         self._s0 = np.array(s0, dtype=np.float64)
         self._norm_s0 = (self._s0 / norm(self._s0)).flatten()
+        self._norm_s0_cctbx = matrix.col((
+            self._norm_s0[0],self._norm_s0[1], self._norm_s0[2]
+        ))
+        print(self._norm_s0_cctbx)
+        print(self._r)
 
         self.state = state
         self._Q = None
@@ -648,6 +654,7 @@ class ReflectionModelState(object):
                     q2[0], q2[1], q2[2],
                     norm_r[0], norm_r[1], norm_r[2]
             ))
+            self._Q_cctbx_T = matrix.sqr(self._Q_cctbx.transpose())
         self._recalc_sigma()
         self._recalc_sigma_lambda()
         self.update()
@@ -658,7 +665,7 @@ class ReflectionModelState(object):
         if self.state.is_mosaic_spread_angular:
             # Define rotation for W sigma components
             # check if r has actually been updated
-            if (not self.state.is_orientation_fixed) or (
+            '''if (not self.state.is_orientation_fixed) or (
                 not self.state.is_unit_cell_fixed
             ):
                 r = np.array(self._r)
@@ -674,9 +681,14 @@ class ReflectionModelState(object):
                     q2[0], q2[1], q2[2],
                     norm_r[0], norm_r[1], norm_r[2]
                 ))
+                self._Q_cctbx_T = self._Q_cctbx.transpose()
             #M_np = np.array(list(M), dtype=np.float64).reshape(3, 3)
             #self._sigma = np.matmul(np.matmul(self._Q.T, M_np), self._Q)
-            self._sigma = (self._Q_cctbx.transpose() * M) * self._Q_cctbx
+            self._sigma = (self._Q_cctbx_T * M) * self._Q_cctbx'''
+            self._sigma = recalc_sigma_angular(
+                M,self._Q_cctbx, self._Q_cctbx_T,
+                self.state.is_orientation_fixed, self.state.is_unit_cell_fixed,
+                self._r, self._norm_s0_cctbx)
         else:
             self._sigma = M  #
 

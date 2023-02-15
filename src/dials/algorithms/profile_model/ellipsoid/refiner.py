@@ -112,7 +112,7 @@ class ConditionalDistribution(object):
         S21 = matrix.col((S[6], S[7]))
 
         # The partitioned mean vector
-        mu1 = matrix.col((mu[0], mu[1]))#:2, 0].reshape(2, 1)
+        #mu1 = matrix.col((mu[0], mu[1]))#:2, 0].reshape(2, 1)
         mu2 = mu[2]#, 0]
         # a = norm(s0)
 
@@ -121,8 +121,11 @@ class ConditionalDistribution(object):
         #print(1 / S22)
 
         # Compute the conditional mean
-        mult =  S12 * (1 / S22) * self.epsilon
-        self._mubar = matrix.col((mu[0] + mult[0], mu[1] + mult[1]))
+        #mult =  S12 * (1 / S22) * self.epsilon
+        self._mubar = (mu[0] + (S[2]*self.epsilon / S22),
+            mu[1]+ (S[5]*self.epsilon / S22))
+        
+        #matrix.col((mu[0] + mult[0], mu[1] + mult[1]))
 
         #self._mubar = (self._mubar[0,0], self._mubar[1,0])
         # assert self._mubar.shape == (2, 1)
@@ -242,14 +245,14 @@ class ReflectionLikelihood(object):
             self.s0_orig[2] + self.modelstate.get_r()[2])
         )
         self.R_cctbx = matrix.sqr(self.R.flatten())
+        self.R_cctbx_T = self.R_cctbx.transpose()
         # Rotate the mean vector
         self.mu = self.R_cctbx * s2#np.matmul(self.R, s2)
         #print(self.mu)
         #print(self.mu)
         #assert 0
         #self.R_cctbx = matrix.sqr(self.R.flatten())
-        self.S = (
-            (self.R_cctbx * modelstate.mosaicity_covariance_matrix) * self.R_cctbx.transpose())
+        self.S = (self.R_cctbx * modelstate.mosaicity_covariance_matrix) * self.R_cctbx_T
         #print(self.S)
 
         #np.matmul(
@@ -271,11 +274,10 @@ class ReflectionLikelihood(object):
         # The s2 vector
         #s2 = self.s0 + self.modelstate.get_r()
         #s0 = matrix.col(flumpy.from_numpy(self.s0))
-        s2 = matrix.col(
-            (self.s0_orig[0] + self.modelstate.get_r()[0],
-            self.s0_orig[1] + self.modelstate.get_r()[1],
-            self.s0_orig[2] + self.modelstate.get_r()[2])
-        )
+        r = self.modelstate.get_r()
+        s2 = (self.s0_orig[0] + r[0],
+            self.s0_orig[1] + r[1],
+            self.s0_orig[2] + r[2])
         # Rotate the mean vector
         #self.mu = np.matmul(self.R, s2)
         self.mu = self.R_cctbx * s2
@@ -283,8 +285,7 @@ class ReflectionLikelihood(object):
 
         # Rotate the covariance matrix
         if not self.modelstate.state.is_mosaic_spread_fixed:
-            self.S = (
-            (self.R_cctbx * self.modelstate.mosaicity_covariance_matrix) * self.R_cctbx.transpose())
+            self.S = (self.R_cctbx * self.modelstate.mosaicity_covariance_matrix) * self.R_cctbx_T
 
             #np.matmul(
             #    np.matmul(self.R, self.modelstate.mosaicity_covariance_matrix), self.R.T
