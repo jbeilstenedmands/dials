@@ -3,26 +3,26 @@ from __future__ import annotations
 import logging
 import random
 import textwrap
-from math import log, pi, sqrt
+from math import pi, sqrt
 from typing import List
 
 import numpy as np
-from numpy.linalg import det, inv, norm
+from numpy.linalg import norm
 
 from dxtbx import flumpy
 from scitbx import linalg, matrix
 
 from dials.algorithms.profile_model.ellipsoid import (
+    cpp_compute_dmbar,
+    cpp_compute_dSbar,
     cpp_first_derivatives,
     cpp_fisher_information,
     cpp_log_likelihood,
+    cpp_rotate_mat3_double,
+    cpp_rotate_vec3_double,
     mosaicity_from_eigen_decomposition,
     reflection_statistics,
     rse,
-    cpp_compute_dmbar,
-    cpp_compute_dSbar,
-    cpp_rotate_mat3_double,
-    cpp_rotate_vec3_double,
 )
 from dials.algorithms.profile_model.ellipsoid.model import (
     compute_change_of_basis_operation,
@@ -43,49 +43,6 @@ class BadSpotForIntegrationException(Exception):
     pass
 
 
-'''def compute_dSbar(S: matrix.sqr, dS: np.array) -> np.array:
-    # dS & S are 3x3 arrays. Returns a 2x2 array
-    S12 = S[0:2, 2].reshape(2, 1)
-    S21 = S[2, 0:2].reshape(1, 2)
-    S22 = S[2, 2]
-
-    dS11 = dS[0:2, 0:2]
-    dS12 = dS[0:2, 2].reshape(2, 1)
-    dS21 = dS[2, 0:2].reshape(1, 2)
-    dS22 = dS[2, 2]
-
-    S22_inv = 1 / S22
-
-    A = dS11
-    B = np.matmul(S12 * S22_inv * dS22 * S22_inv, S21)
-    C = np.matmul(S12 * S22_inv, dS21)
-    D = np.matmul(dS12 * S22_inv, S21)
-    return A + B - (C + D)
-
-
-def compute_dmbar(S: np.array, dS: np.array, dmu: np.array, epsilon: float) -> np.array:
-    # S, dS are is a 3x3 array, dmu is 3x1 array
-    dmu = dmu.reshape(3, 1)  # 3x1 array
-
-    S12 = S[0:2, 2].reshape(2, 1)
-    S22 = S[2, 2]
-
-    dS12 = dS[0:2, 2].reshape(2, 1)
-    dS22 = dS[2, 2]
-
-    S22_inv = 1 / S22
-
-    dmu1 = dmu[0:2, 0].reshape(2, 1)
-    dmu2 = dmu[2, 0]
-    dep = -dmu2
-
-    A = dmu1
-    B = dS12 * S22_inv * epsilon
-    C = -S12 * S22_inv * dS22 * S22_inv * epsilon
-    D = S12 * S22_inv * dep
-    return A + B + C + D'''
-
-
 class ConditionalDistribution(object):
     """
     A class to compute useful stuff about the conditional distribution
@@ -95,16 +52,10 @@ class ConditionalDistribution(object):
     def __init__(self, norm_s0, mu, dmu, S, dS):
         # norm_s0 is a float i.e. norm(s0)
         self._mu = mu  # 3x1 array
-        self._dmu = dmu#[(dmu[0,i], dmu[1,i], dmu[2,i]) for i in range(dmu.shape[1])]  # 3 x n array
-        #print(self._dmu)
-        #assert 0
-        self._S = S#matrix.sqr(S.reshape((9,)))  # 3x3 array
-        self._dS = dS#[matrix.sqr(dS[:, :, i].reshape((9,))) for i in range(dS.shape[2])]#  # 3 x 3 x n array
-        #print(S)
-        # Partition the covariance matrix
-        #S11 = np.array([S[0], S[1], S[3], S[4]]).reshape(2, 2)#S[0:2, 0:2]
-        #S12 = np.array([S[2], S[5]]).reshape(2, 1)#S[0:2, 2].reshape(2, 1)
-        #S21 = np.array([S[6], S[7]]).reshape(1, 2)#S[2, 0:2].reshape(1, 2)
+        self._dmu = dmu  #
+        self._S = S
+        self._dS = dS
+
         S22 = S[8]
 
         S12 = matrix.col((S[2], S[5]))
@@ -112,33 +63,24 @@ class ConditionalDistribution(object):
         S21 = matrix.col((S[6], S[7]))
 
         # The partitioned mean vector
-        #mu1 = matrix.col((mu[0], mu[1]))#:2, 0].reshape(2, 1)
-        mu2 = mu[2]#, 0]
-        # a = norm(s0)
+        mu2 = mu[2]
 
         # The epsilon
         self.epsilon = norm_s0 - mu2
-        #print(1 / S22)
 
         # Compute the conditional mean
-        #mult =  S12 * (1 / S22) * self.epsilon
-        self._mubar = (mu[0] + (S[2]*self.epsilon / S22),
-            mu[1]+ (S[5]*self.epsilon / S22))
-        
-        #matrix.col((mu[0] + mult[0], mu[1] + mult[1]))
-
-        #self._mubar = (self._mubar[0,0], self._mubar[1,0])
-        # assert self._mubar.shape == (2, 1)
+        self._mubar = (
+            mu[0] + (S[2] * self.epsilon / S22),
+            mu[1] + (S[5] * self.epsilon / S22),
+        )
 
         # Compute the conditional covariance matrix
-        self._Sbar = S11 - (matrix.sqr((S12[0]*S21[0],S12[0]*S21[1],S12[1]*S21[0],S12[1]*S21[1] ))/ S22)
-        #print(self._Sbar)
-        #assert 0
-        #self._Sbar = S11 - np.matmul(S12 * (1 / S22), S21)
-        #print(self._Sbar.reshape((4,)))
-        #print(self._Sbar.tolist())
-        #self._Sbar = matrix.sqr(self._Sbar.reshape((4,)).tolist())
-        #assert self._Sbar.shape == (2, 2)
+        self._Sbar = S11 - (
+            matrix.sqr(
+                (S12[0] * S21[0], S12[0] * S21[1], S12[1] * S21[0], S12[1] * S21[1])
+            )
+            / S22
+        )
 
         # Set to None and compute on demand
         self.dSbar = None
@@ -166,19 +108,6 @@ class ConditionalDistribution(object):
 
         """
         if self.dSbar is None:
-            '''self.dSbar = [
-                compute_dSbar(self._S, self._dS[:, :, i])
-                for i in range(self._dS.shape[2])
-            ]'''
-
-            '''dSbar_flex = flex.double(flex.grid(len(self._dS), 2, 2))
-            for i, dS in enumerate(self._dS):
-                dSb = cpp_compute_dSbar(self._S, dS)
-                dSbar_flex[i, 0, 0] = dSb[0]
-                dSbar_flex[i, 0, 1] = dSb[1]
-                dSbar_flex[i, 1, 0] = dSb[2]
-                dSbar_flex[i, 1, 1] = dSb[3]
-            self.dSbar = dSbar_flex'''
             self.dSbar = cpp_compute_dSbar(self._S, self._dS)
 
         return self.dSbar
@@ -189,17 +118,6 @@ class ConditionalDistribution(object):
 
         """
         if self.dmbar is None:
-            '''self.dmbar = [
-                compute_dmbar(self._S, self._dS[:, :, i], self._dmu[:, i], self.epsilon)
-                for i in range(self._dS.shape[2])
-            ]
-            dmbar_flex = flex.vec2_double(
-                [(dmbar[i][0, 0], dmbar[i][1, 0]) for i in range(len(dmbar))]
-            )'''
-
-            #for i, (dS, dm) in enumerate(zip(self._dS, self._dmu)):
-            #self.dmbar = flex.vec2_double(cpp_compute_dmbar(self._S, dS, dm, self.epsilon) for
-            #    (dS, dm) in zip(self._dS, self._dmu))
             self.dmbar = cpp_compute_dmbar(self._S, self._dS, self._dmu, self.epsilon)
 
         return self.dmbar
@@ -220,44 +138,40 @@ def rotate_mat3_double(R, A):
     """
     return np.einsum("ij,jkv,kl->ilv", R, A, R.T)
 
-import copy
+
 class ReflectionLikelihood(object):
     def __init__(self, model, s0, sp, h, ctot, mobs, sobs):
 
         # Save stuff
         modelstate = ReflectionModelState(model, s0, h)
         self.modelstate = modelstate
-        self.s0_orig = matrix.col((s0[0,0], s0[1,0], s0[2,0]))
+        self.s0_orig = matrix.col((s0[0, 0], s0[1, 0], s0[2, 0]))
         self.s0 = s0.reshape(3, 1)
         self.norm_s0 = float(norm(s0))
         self.sp = sp.reshape(3, 1)
         self.h = np.array([h], dtype=np.float64).reshape(3, 1)
         self.ctot = ctot
-        self.mobs = mobs#[0,0], mobs[1,0])#.reshape(2, 1)
+        self.mobs = mobs
         self.sobs = sobs
 
         # Compute the change of basis
         self.R = compute_change_of_basis_operation(self.s0, self.sp)  # const
-        #s0 = matrix.col(flumpy.from_numpy(s0))
         s2 = matrix.col(
-            (self.s0_orig[0] + self.modelstate.get_r()[0],
-            self.s0_orig[1] + self.modelstate.get_r()[1],
-            self.s0_orig[2] + self.modelstate.get_r()[2])
+            (
+                self.s0_orig[0] + self.modelstate.get_r()[0],
+                self.s0_orig[1] + self.modelstate.get_r()[1],
+                self.s0_orig[2] + self.modelstate.get_r()[2],
+            )
         )
         self.R_cctbx = matrix.sqr(self.R.flatten())
         self.R_cctbx_T = self.R_cctbx.transpose()
         # Rotate the mean vector
-        self.mu = self.R_cctbx * s2#np.matmul(self.R, s2)
-        #print(self.mu)
-        #print(self.mu)
-        #assert 0
-        #self.R_cctbx = matrix.sqr(self.R.flatten())
-        self.S = (self.R_cctbx * modelstate.mosaicity_covariance_matrix) * self.R_cctbx_T
-        #print(self.S)
+        self.mu = self.R_cctbx * s2
 
-        #np.matmul(
-        #    np.matmul(self.R, modelstate.mosaicity_covariance_matrix), self.R.T
-        #)  # const when not refining mosaicity
+        self.S = (
+            self.R_cctbx * modelstate.mosaicity_covariance_matrix
+        ) * self.R_cctbx_T
+
         self.dS = cpp_rotate_mat3_double(
             self.R_cctbx, modelstate.get_dS_dp()
         )  # const when not refining mosaicity?
@@ -272,25 +186,16 @@ class ReflectionLikelihood(object):
     def update(self):
 
         # The s2 vector
-        #s2 = self.s0 + self.modelstate.get_r()
-        #s0 = matrix.col(flumpy.from_numpy(self.s0))
         r = self.modelstate.get_r()
-        s2 = (self.s0_orig[0] + r[0],
-            self.s0_orig[1] + r[1],
-            self.s0_orig[2] + r[2])
+        s2 = (self.s0_orig[0] + r[0], self.s0_orig[1] + r[1], self.s0_orig[2] + r[2])
         # Rotate the mean vector
-        #self.mu = np.matmul(self.R, s2)
         self.mu = self.R_cctbx * s2
-        #self.mu = self.R * s2
 
         # Rotate the covariance matrix
         if not self.modelstate.state.is_mosaic_spread_fixed:
-            self.S = (self.R_cctbx * self.modelstate.mosaicity_covariance_matrix) * self.R_cctbx_T
-
-            #np.matmul(
-            #    np.matmul(self.R, self.modelstate.mosaicity_covariance_matrix), self.R.T
-            #)  # const when not refining mosaicity
-            #self.S =(self.R * self.modelstate.mosaicity_covariance_matrix) * self.R.transpose()
+            self.S = (
+                self.R_cctbx * self.modelstate.mosaicity_covariance_matrix
+            ) * self.R_cctbx_T
 
         # Rotate the first derivative matrices
         if not self.modelstate.state.is_mosaic_spread_fixed:
@@ -324,30 +229,12 @@ class ReflectionLikelihood(object):
 
         # Get info about the marginal
         S22 = self.S[8]
-        S22_inv = 1 / S22
-        #print(self.mu)
         mu2 = self.mu[2]
 
         # Get info about the conditional
         Sbar = self.conditional.sigma()
         mubar = self.conditional.mean()
-        '''print("ctot")
-        print("mobs")
-        print("Sobs")
-        print(ctot)
-        print(mobs)
-        print(Sobs)
-        print("Sbar")
-        print("mubar")
-        print("mu2")
-        print(Sbar)
-        print(mubar)
-        print(mu2)
-        print("S22")
-        print("self.norm_s0")
-        print(S22)
-        print(self.norm_s0)
-        assert 0'''
+
         return cpp_log_likelihood(
             ctot,
             mobs,
@@ -358,35 +245,6 @@ class ReflectionLikelihood(object):
             S22,
             self.norm_s0,
         )
-        '''print(cppll)
-        Sbar = np.array(list(Sbar), dtype=np.float64).reshape((2,2))
-
-        Sbar_inv = inv(Sbar)
-        Sbar_det = det(Sbar)
-
-        # Weights for marginal and conditional components
-        m_w = ctot
-        c_w = ctot
-
-        # Compute the marginal likelihood
-        m_d = self.norm_s0 - mu2
-        m_lnL = m_w * (log(S22) + S22_inv * m_d**2)
-
-        # Compute the conditional likelihood
-        c_d = np.array([mobs[0] - mubar[0], mobs[1]-mubar[1]], dtype=np.float64).reshape((2,1))
-        c_lnL = c_w * (
-            log(Sbar_det)
-            + np.trace(np.matmul(Sbar_inv, (Sobs + np.matmul(c_d, c_d.T))))
-        )
-
-        # Return the joint likelihood
-        jLL = -0.5 * (m_lnL + c_lnL)
-        print(jLL)
-        if round(jLL, 10) != round(cppll,10):
-            assert 0
-        else:
-            print("Equal")
-        return jLL'''
 
     def first_derivatives(self):
         """
@@ -400,9 +258,7 @@ class ReflectionLikelihood(object):
 
         # Get info about marginal distribution
         S22 = self.S[8]
-        #dS22_vec = self.dS[2, 2, :]  # for i in range(self.dS.shape[2])]
-        dS22 = flex.double([self.dS[2,2,i] for i in range(self.dS.all()[2])])
-        S22_inv = 1 / S22
+        dS22 = flex.double([self.dS[2, 2, i] for i in range(self.dS.all()[2])])
         mu2 = self.mu[2]
 
         # Get info about conditional distribution
@@ -410,71 +266,25 @@ class ReflectionLikelihood(object):
         mubar = self.conditional.mean()  # 2x1 array
         dSbar_flex = self.conditional.first_derivatives_of_sigma()  # list of 2x2 arrays
         dmbar_flex = self.conditional.first_derivatives_of_mean()  # list of 2x1 arrays
-        #Sbar_inv = inv(Sbar)
 
         # The distance from the ewald sphere
-        epsilon = self.norm_s0 - mu2
-        #c_d = mobs - mubar  # 2x1 array
+        dep = -1.0 * self.dmu.parts()[2]
 
-        # Weights for marginal and conditional components
-        m_w = ctot
-        c_w = ctot
-        #dep = -self.dmu[2, :]
-        dep = -1.0*self.dmu.parts()[2]#flex.double([-self.dmu[2,i] for i in range(self.dmu.all()[1])])
-
-        # Compute the derivative wrt parameter i
-        """I = np.array([[1.0, 0], [0, 1.0]], dtype=np.float64).reshape(2, 2)
-
-        V1 = Sobs + np.matmul(c_d, c_d.T)
-        V2 = I - np.matmul(Sbar_inv, V1)
-
-        dSbar = np.array(dSbar)
-        dmbar_vec = np.array(dmbar)
-        
-        V_vec = np.einsum("ij,ljk->ikl", Sbar_inv, dSbar)
-        V_vec = c_w * np.einsum("ijl,ji->l", V_vec, V2)
-        print(list(V_vec))"""
-        #dS22 = flex.double(dS22_vec)
-        #Sbar = matrix.sqr(flex.double(Sbar.tolist()))
-        '''dSbar_flex = flex.double(flex.grid(len(dSbar), 2, 2))
-        for i in range(len(dSbar)):
-            dSbar_flex[i, 0, 0] = dSbar[i][0, 0]
-            dSbar_flex[i, 0, 1] = dSbar[i][0, 1]
-            dSbar_flex[i, 1, 0] = dSbar[i][1, 0]
-            dSbar_flex[i, 1, 1] = dSbar[i][1, 1]'''
-        '''dmbar_flex = flex.vec2_double(
-            [(dmbar[i][0, 0], dmbar[i][1, 0]) for i in range(len(dmbar))]
-        )'''
         V_CPP = cpp_first_derivatives(
             ctot,
-            mobs,#(mobs[0, 0], mobs[1, 0]),
-            Sobs,#.tolist())),
+            mobs,
+            Sobs,
             S22,
             dS22,
             mu2,
             self.norm_s0,
             Sbar,
-            mubar,#[0, 0], mubar[1, 0]),
+            mubar,
             dSbar_flex,
             dmbar_flex,
             dep,
         )
         return -0.5 * V_CPP
-
-        """U_vec = m_w * (
-            S22_inv * dS22_vec * (1.0 - S22_inv * epsilon**2)
-            + 2 * S22_inv * epsilon * dep
-        )
-        
-        W_vec = np.einsum("ij,lkj->ikl", c_d, dmbar_vec)
-        W_vec = -2.0 * c_w * np.einsum("ij,jil->l", Sbar_inv, W_vec)
-        print(list(V_vec + U_vec + W_vec))
-        print(list(V_CPP))
-        assert 0
-        dL = -0.5 * (U_vec + V_vec + W_vec)
-        print(dL.shape)
-        assert 0
-        return dL"""
 
     def fisher_information(self):
         """
@@ -484,76 +294,19 @@ class ReflectionLikelihood(object):
         ctot = self.ctot
 
         # Get info about marginal distribution
-        S22 = self.S[8]  # number
-        #dS22 = [
-        #    self.dS[2, 2, i] for i in range(self.dS.shape[2])
-        #]  # depends on no of params
-        dS22 = flex.double([self.dS[2,2,i] for i in range(self.dS.all()[2])])
-        S22_inv = 1 / S22  # number
+        S22 = self.S[8]
+        dS22 = flex.double([self.dS[2, 2, i] for i in range(self.dS.all()[2])])
 
         # Get info about conditional distribution
         Sbar = self.conditional.sigma()  # 2x2 array
         dSbar_flex = self.conditional.first_derivatives_of_sigma()  # list of 2x2 arrays
         dmbar_flex = self.conditional.first_derivatives_of_mean()  # list of 2x1 arrays
-        #Sbar_inv = inv(Sbar)
-        dmu = self.dmu
-        dmu2 = self.dmu.parts()[2]#flex.double([self.dmu[2, i] for i in range(self.dmu.all()[1])])
-
-        """# Weights for marginal and conditional components
-        m_w = ctot
-        c_w = ctot
-
-        # Compute the fisher information wrt parameter i j
-        I = flex.double(flex.grid(len(dS22), len(dS22)))
-
-        for j in range(len(dS22)):
-            for i in range(len(dS22)):
-                U = S22_inv * dS22[j] * S22_inv * dS22[i]
-                V = np.trace(
-                    np.matmul(
-                        np.matmul(
-                            np.matmul(
-                                Sbar_inv,
-                                dSbar[j],
-                            ),
-                            Sbar_inv,
-                        ),
-                        dSbar[i],
-                    )
-                )
-                W = 2 * np.trace(
-                    np.matmul(
-                        np.matmul(
-                            Sbar_inv,
-                            dmbar[i],
-                        ),
-                        dmbar[j].T,
-                    )
-                )
-                X = 2 * dmu[2, i] * S22_inv * dmu[2, j]
-                I[j, i] = 0.5 * c_w * (V + W) + 0.5 * m_w * (U + X)"""
-        # print(list(I))
+        dmu2 = self.dmu.parts()[2]
         dS22 = flex.double(dS22)
-        #Sbar = matrix.sqr(flex.double(Sbar.tolist()))
-        '''dSbar_flex = flex.double(flex.grid(len(dSbar), 2, 2))
-        for i in range(len(dSbar)):
-            dSbar_flex[i, 0, 0] = dSbar[i][0, 0]
-            dSbar_flex[i, 0, 1] = dSbar[i][0, 1]
-            dSbar_flex[i, 1, 0] = dSbar[i][1, 0]
-            dSbar_flex[i, 1, 1] = dSbar[i][1, 1]'''
-        '''dmbar_flex = flex.vec2_double(
-            [(dmbar[i][0, 0], dmbar[i][1, 0]) for i in range(len(dmbar))]
-        )'''
-        # for i in range(len(dmbar)):
-        #    dmbar_flex[i,:,:] = dmbar[i]
-        # print(list(dSbar_flex))
-        # print(dSbar)
-        v1 = cpp_fisher_information(ctot, S22, dS22, Sbar, dmu2, dSbar_flex, dmbar_flex)
-        return v1
 
-        # print(list(v1))
-        # assert 0
-        # return I
+        return cpp_fisher_information(
+            ctot, S22, dS22, Sbar, dmu2, dSbar_flex, dmbar_flex
+        )
 
 
 class MaximumLikelihoodTarget(object):
@@ -563,14 +316,14 @@ class MaximumLikelihoodTarget(object):
         assert len(h_list) == sp_list.shape[-1]
         assert len(h_list) == ctot_list.shape[-1]
         assert len(h_list) == len(mobs_list)
-        assert len(h_list) == len(sobs_list)#.shape[-1]
+        assert len(h_list) == len(sobs_list)
 
         # Save the model
         self.model = model
 
         # Compute the change of basis for each reflection
         self.data = []
-        
+
         for i in range(len(h_list)):
             self.data.append(
                 ReflectionLikelihood(
@@ -598,8 +351,8 @@ class MaximumLikelihoodTarget(object):
         for i in range(len(self.data)):
             mbar = self.data[i].conditional.mean()
             xobs = self.data[i].mobs
-            mse += (xobs[0] - mbar[0])**2 + (xobs[1] - mbar[1])**2
-            #mse += np.dot((xobs - mbar).T, xobs - mbar)
+            mse += (xobs[0] - mbar[0]) ** 2 + (xobs[1] - mbar[1]) ** 2
+            # mse += np.dot((xobs - mbar).T, xobs - mbar)
         mse /= len(self.data)
         return mse
 
@@ -611,12 +364,14 @@ class MaximumLikelihoodTarget(object):
         mse_x = 0.0
         mse_y = 0.0
         for i in range(len(self.data)):
-            R = self.data[i].R_cctbx#matrix.sqr(flex.double(self.data[i].R.tolist()))  # (3x3 numpy array)
+            R = self.data[
+                i
+            ].R_cctbx  # matrix.sqr(flex.double(self.data[i].R.tolist()))  # (3x3 numpy array)
             mbar = self.data[i].conditional.mean()  # 2x1 array
             xobs = self.data[i].mobs  # # 2x1 array
             norm_s0 = self.data[i].norm_s0
-            #xobs = (xobs[0, 0], xobs[1, 0])
-            #mbar = (mbar[0, 0], mbar[1, 0])
+            # xobs = (xobs[0, 0], xobs[1, 0])
+            # mbar = (mbar[0, 0], mbar[1, 0])
             rse_i = rse(R, mbar, xobs, norm_s0, self.model.experiment.detector)
             mse_x += rse_i[0]
             mse_y += rse_i[1]
@@ -1104,9 +859,7 @@ class Refiner(object):
         # Print the eigen values and vectors of sigma_m
         if not self.state.is_mosaic_spread_fixed:
             logger.info("\nDecomposition of Sigma_M:")
-            print_eigen_values_and_vectors(
-                self.state.mosaicity_covariance_matrix
-            )
+            print_eigen_values_and_vectors(self.state.mosaicity_covariance_matrix)
 
         # Save the history
         self.history = self.ml.history
@@ -1129,7 +882,7 @@ class Refiner(object):
         return self.state.parameter_labels
 
 
-'''def calc_values(panel, xyzobs, s0_length, s0, sbox):
+"""def calc_values(panel, xyzobs, s0_length, s0, sbox):
     # The vector to the pixel centroid
     sp = np.array(panel.get_pixel_lab_coord(xyzobs[0:2]), dtype=np.float64).reshape(
         3, 1
@@ -1195,7 +948,7 @@ class Refiner(object):
         raise BadSpotForIntegrationException(
             "Strong spot variance <= 0. Check spotfinding results"
         )
-    return sp, ctot, xbar, Sobs'''
+    return sp, ctot, xbar, Sobs"""
 
 
 class RefinerData(object):
@@ -1234,8 +987,8 @@ class RefinerData(object):
         # Initialise the list of observed intensities and covariances
         sp_list = np.zeros(shape=(3, len(h_list)))
         ctot_list = np.zeros(shape=(len(h_list)))
-        mobs_list = flex.vec2_double(len(h_list))#np.zeros(shape=(2, len(h_list)))
-        Sobs_list = [0] * len(h_list)#np.zeros(shape=(2, 2, len(h_list)))
+        mobs_list = flex.vec2_double(len(h_list))  # np.zeros(shape=(2, len(h_list)))
+        Sobs_list = [0] * len(h_list)  # np.zeros(shape=(2, 2, len(h_list)))
 
         logger.info(
             "Computing observed covariance for %d reflections" % len(reflections)
@@ -1259,16 +1012,16 @@ class RefinerData(object):
             # Add to the lists
             sp_list[:, r] = sp  # [:, 0]
             ctot_list[r] = ctot
-            mobs_list[r] = xbar 
-            Sobs_list[r] = Sobs # [:, 0]
-            #print(type(Sobs))
-            #print(type(sp))
-            #print(type(ctot))
-            #print(type(xbar))
-            '''Sobs_list[0, 0, r] = Sobs[0]
+            mobs_list[r] = xbar
+            Sobs_list[r] = Sobs  # [:, 0]
+            # print(type(Sobs))
+            # print(type(sp))
+            # print(type(ctot))
+            # print(type(xbar))
+            """Sobs_list[0, 0, r] = Sobs[0]
             Sobs_list[0, 1, r] = Sobs[1]
             Sobs_list[1, 0, r] = Sobs[2]
-            Sobs_list[1, 1, r] = Sobs[3]'''
+            Sobs_list[1, 1, r] = Sobs[3]"""
 
         # Print some information
         logger.info("")
@@ -1303,11 +1056,11 @@ class RefinerData(object):
         ctot_list = damp_outlier_intensity_weights(ctot_list)
 
         # Print the mean covariance
-        '''Smean = np.mean(Sobs_list, axis=2)
+        """Smean = np.mean(Sobs_list, axis=2)
         logger.info("")
         logger.info("Mean observed covariance:")
         logger.info(print_matrix_np(Smean))
-        print_eigen_values_and_vectors_of_observed_covariance(Smean, s0)'''
+        print_eigen_values_and_vectors_of_observed_covariance(Smean, s0)"""
 
         # Compute the distance from the Ewald sphere
         epsilon = flex.double(

@@ -7,7 +7,6 @@ from numpy.linalg import norm
 
 from dxtbx import flumpy
 from libtbx.phil import parse
-from scitbx import matrix
 from scitbx.linalg import eigensystem, l_l_transpose_cholesky_decomposition_in_place
 
 from dials.algorithms.profile_model.ellipsoid import (
@@ -252,9 +251,7 @@ class SimpleProfileModelBase(ProfileModelBase):
         Predict the reflections
 
         """
-        predictor = PredictorSimple(
-            experiments[0], self.sigma(), probability
-        )
+        predictor = PredictorSimple(experiments[0], self.sigma(), probability)
         return predictor.predict(miller_indices)
 
     def compute_bbox(self, experiments, reflections, probability=FULL_PARTIALITY):
@@ -262,9 +259,7 @@ class SimpleProfileModelBase(ProfileModelBase):
         Compute the bounding box
 
         """
-        calculator = BBoxCalculatorSimple(
-            experiments[0], self.sigma(), probability, 4
-        )
+        calculator = BBoxCalculatorSimple(experiments[0], self.sigma(), probability, 4)
         calculator.compute(reflections)
 
     def compute_mask(self, experiments, reflections, probability=FULL_PARTIALITY):
@@ -272,9 +267,7 @@ class SimpleProfileModelBase(ProfileModelBase):
         Compute the mask
 
         """
-        calculator = MaskCalculatorSimple(
-            experiments[0], self.sigma(), probability
-        )
+        calculator = MaskCalculatorSimple(experiments[0], self.sigma(), probability)
         calculator.compute(reflections)
 
     def sigma_for_reflection(self, s0, r):
@@ -294,7 +287,7 @@ class SimpleProfileModelBase(ProfileModelBase):
         num = reflections.size()
 
         # Compute the marginal variance for the 000 reflection
-        S00 = experiments[0].crystal.mosaicity.sigma()[2, 2]
+        S00 = experiments[0].crystal.mosaicity.sigma()[8]
         partiality = flex.double(reflections.size())
         partiality_variance = flex.double(reflections.size())
         for k, s2_vec in enumerate(reflections["s2"]):
@@ -447,9 +440,7 @@ class AngularProfileModelBase(ProfileModelBase):
         Predict the reflections
 
         """
-        predictor = PredictorAngular(
-            experiments[0], self.sigma(), probability
-        )
+        predictor = PredictorAngular(experiments[0], self.sigma(), probability)
         return predictor.predict(miller_indices)
 
     def compute_bbox(self, experiments, reflections, probability=FULL_PARTIALITY):
@@ -457,9 +448,7 @@ class AngularProfileModelBase(ProfileModelBase):
         Compute the bounding box
 
         """
-        calculator = BBoxCalculatorAngular(
-            experiments[0], self.sigma(), probability, 4
-        )
+        calculator = BBoxCalculatorAngular(experiments[0], self.sigma(), probability, 4)
         calculator.compute(reflections)
 
     def compute_mask(self, experiments, reflections, probability=FULL_PARTIALITY):
@@ -467,9 +456,7 @@ class AngularProfileModelBase(ProfileModelBase):
         Compute the mask
 
         """
-        calculator = MaskCalculatorAngular(
-            experiments[0], self.sigma(), probability
-        )
+        calculator = MaskCalculatorAngular(experiments[0], self.sigma(), probability)
         calculator.compute(reflections)
 
     def compute_partiality(self, experiments, reflections):

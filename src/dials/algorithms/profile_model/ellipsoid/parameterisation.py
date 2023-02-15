@@ -6,14 +6,12 @@ from typing import Dict, List, Optional
 import numpy as np
 from numpy.linalg import norm
 
-from dxtbx import flumpy
 from scitbx import linalg, matrix
 
 from dials.algorithms.profile_model.ellipsoid import (
-    mosaicity_from_eigen_decomposition,
-    calc_ds_dp,
     calc_dr_dp,
-    recalc_sigma_angular,
+    calc_ds_dp,
+    mosaicity_from_eigen_decomposition,
 )
 from dials.algorithms.refinement.parameterisation.crystal_parameters import (
     CrystalOrientationParameterisation,
@@ -80,9 +78,7 @@ class Simple1MosaicityParameterisation(BaseParameterisation):
 
         """
         psq = self.params[0] ** 2
-        return matrix.sqr(
-            (psq, 0, 0, 0, psq, 0, 0, 0, psq)
-        )
+        return matrix.sqr((psq, 0, 0, 0, psq, 0, 0, 0, psq))
 
     def first_derivatives(self) -> np.array:
         """
@@ -90,15 +86,13 @@ class Simple1MosaicityParameterisation(BaseParameterisation):
 
         """
         b1 = self.params[0]
-        return np.array(
-            [[[2.0 * b1, 0, 0], [0, 2.0 * b1, 0], [0, 0, 2.0 * b1]]], dtype=np.float64
-        ).reshape(1, 3, 3)
+        ds = flex.double([2.0 * b1, 0, 0, 0, 2.0 * b1, 0, 0, 0, 2.0 * b1])
+        ds.reshape(flex.grid(1, 3, 3))
+        return ds
 
     def mosaicity(self) -> Dict:
         """One value for mosaicity for Simple1"""
-        decomp = linalg.eigensystem.real_symmetric(
-            self.sigma().as_flex_double_matrix()
-        )
+        decomp = linalg.eigensystem.real_symmetric(self.sigma().as_flex_double_matrix())
         v = list(mosaicity_from_eigen_decomposition(decomp.values()))
         return {"spherical": v[0]}
 
@@ -132,18 +126,22 @@ class Simple6MosaicityParameterisation(BaseParameterisation):
         """
         M = matrix.sqr(
             (
-                self.params[0], 0, 0,
-                self.params[1], self.params[2], 0,
-                self.params[3], self.params[4], self.params[5]
+                self.params[0],
+                0,
+                0,
+                self.params[1],
+                self.params[2],
+                0,
+                self.params[3],
+                self.params[4],
+                self.params[5],
             )
         )
         return M * M.transpose()
 
     def mosaicity(self) -> Dict:
         """Three components for mosaicity for Simple6"""
-        decomp = linalg.eigensystem.real_symmetric(
-            self.sigma().as_flex_double_matrix()
-        )
+        decomp = linalg.eigensystem.real_symmetric(self.sigma().as_flex_double_matrix())
         vals = list(mosaicity_from_eigen_decomposition(decomp.values()))
         min_m = min(vals)
         max_m = max(vals)
@@ -157,32 +155,65 @@ class Simple6MosaicityParameterisation(BaseParameterisation):
 
         """
         b1, b2, b3, b4, b5, b6 = self.params
-
-        d1 = np.array(
-            [[2 * b1, b2, b4], [b2, 0, 0], [b4, 0, 0]], dtype=np.float64
-        ).reshape(1, 3, 3)
-
-        d2 = np.array(
-            [[0, b1, 0], [b1, 2 * b2, b4], [0, b4, 0]], dtype=np.float64
-        ).reshape(1, 3, 3)
-
-        d3 = np.array(
-            [[0, 0, 0], [0, 2 * b3, b5], [0, b5, 0]], dtype=np.float64
-        ).reshape(1, 3, 3)
-
-        d4 = np.array(
-            [[0, 0, b1], [0, 0, b2], [b1, b2, 2 * b4]], dtype=np.float64
-        ).reshape(1, 3, 3)
-
-        d5 = np.array(
-            [[0, 0, 0], [0, 0, b3], [0, b3, 2 * b5]], dtype=np.float64
-        ).reshape(1, 3, 3)
-
-        d6 = np.array([[0, 0, 0], [0, 0, 0], [0, 0, 2 * b6]], dtype=np.float64).reshape(
-            1, 3, 3
+        ds = flex.double(
+            [
+                2 * b1,
+                b2,
+                b4,
+                b2,
+                0,
+                0,
+                b4,
+                0,
+                0,
+                0,
+                b1,
+                0,
+                b1,
+                2 * b2,
+                b4,
+                0,
+                b4,
+                0,
+                0,
+                0,
+                0,
+                0,
+                2 * b3,
+                b5,
+                0,
+                b5,
+                0,
+                0,
+                0,
+                b1,
+                0,
+                0,
+                b2,
+                1,
+                b2,
+                2 * b4,
+                0,
+                0,
+                0,
+                0,
+                0,
+                b3,
+                0,
+                b3,
+                2 * b5,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                2 * b6,
+            ]
         )
-
-        ds = np.concatenate([d1, d2, d3, d4, d5, d6], axis=0)
+        ds.reshape(flex.grid(6, 3, 3))
 
         return ds
 
@@ -245,15 +276,11 @@ class Angular2MosaicityParameterisation(BaseParameterisation):
         """
         p1sq = self.params[0] ** 2
         p2sq = self.params[1] ** 2
-        return matrix.sqr(
-            (p1sq, 0, 0, 0, p1sq, 0, 0, 0, p2sq)
-        )
+        return matrix.sqr((p1sq, 0, 0, 0, p1sq, 0, 0, 0, p2sq))
 
     def mosaicity(self) -> Dict:
         """Two unique components of mosaicity"""
-        decomp = linalg.eigensystem.real_symmetric(
-            self.sigma().as_flex_double_matrix()
-        )
+        decomp = linalg.eigensystem.real_symmetric(self.sigma().as_flex_double_matrix())
         m = mosaicity_from_eigen_decomposition(decomp.values())
         v = decomp.vectors()
         mosaicities = {"radial": 0, "angular": 0}
@@ -276,16 +303,11 @@ class Angular2MosaicityParameterisation(BaseParameterisation):
         Compute the first derivatives of Sigma w.r.t the parameters
         """
         b1, b2 = self.params
-
-        d1 = np.array(
-            [[2 * b1, 0, 0], [0, 2 * b1, 0], [0, 0, 0]], dtype=np.float64
-        ).reshape(1, 3, 3)
-
-        d2 = np.array([[0, 0, 0], [0, 0, 0], [0, 0, 2 * b2]], dtype=np.float64).reshape(
-            1, 3, 3
+        ds = flex.double(
+            [2 * b1, 0, 0, 0, 2 * b1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2 * b2]
         )
-
-        return np.concatenate([d1, d2], axis=0)
+        ds.reshape(flex.grid(2, 3, 3))
+        return ds
 
 
 class Angular4MosaicityParameterisation(BaseParameterisation):
@@ -311,8 +333,6 @@ class Angular4MosaicityParameterisation(BaseParameterisation):
         """
         Compute the covariance matrix of the MVN from the parameters
         """
-        # M = [[p[0], 0, 0], [p[1], p[2], 0], [0, 0, p[3]]]
-        # return np.matmul(M, M.T)
         ab = self.params[0] * self.params[1]
         aa = self.params[0] ** 2
         bcsq = self.params[1] ** 2 + self.params[2] ** 2
@@ -321,9 +341,7 @@ class Angular4MosaicityParameterisation(BaseParameterisation):
 
     def mosaicity(self) -> Dict:
         """Three components of mosaicity"""
-        decomp = linalg.eigensystem.real_symmetric(
-            self.sigma().as_flex_double_matrix()
-        )
+        decomp = linalg.eigensystem.real_symmetric(self.sigma().as_flex_double_matrix())
         m = mosaicity_from_eigen_decomposition(decomp.values())
         v = decomp.vectors()
         mosaicities = {"radial": 0, "angular_0": 0, "angular_1": 0}
@@ -342,27 +360,47 @@ class Angular4MosaicityParameterisation(BaseParameterisation):
         Compute the first derivatives of Sigma w.r.t the parameters
         """
         b1, b2, b3, b4 = self.params
-
-        # d1 = [[2 * b1, b2, 0], [b2, 0, 0], [0, 0, 0]]
-        # d2 = [[0, b1, 0], [b1, 2 * b2, 0], [0, 0, 0]]
-        # d3 = [[0, 0, 0], [0, 2 * b3, 0], [0, 0, 0]]
-        # d4 = [[0, 0, 0], [0, 0, 0], [0, 0, 2 * b4]]
-        '''ds = np.array(
+        ds = flex.double(
             [
-                [2 * b1, b2, 0, b2, 0, 0, 0, 0, 0],
-                [0, b1, 0, b1, 2 * b2, 0, 0, 0, 0],
-                [0, 0, 0, 0, 2 * b3, 0, 0, 0, 0],
-                [0, 0, 0, 0, 0, 0, 0, 0, 2 * b4],
-            ],
-            dtype=np.float64,
-        ).reshape(4, 3, 3)'''
-        ds = flex.double([
-            2 * b1, b2, 0, b2, 0, 0, 0, 0, 0,
-            0, b1, 0, b1, 2 * b2, 0, 0, 0, 0,
-            0, 0, 0, 0, 2 * b3, 0, 0, 0, 0,
-            0, 0, 0, 0, 0, 0, 0, 0, 2 * b4
-        ])
-        ds.reshape(flex.grid(4,3,3))
+                2 * b1,
+                b2,
+                0,
+                b2,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                b1,
+                0,
+                b1,
+                2 * b2,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                2 * b3,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                2 * b4,
+            ]
+        )
+        ds.reshape(flex.grid(4, 3, 3))
         return ds
 
 
@@ -435,15 +473,15 @@ class ModelState(object):
 
     @property
     def U_matrix(self) -> np.array:
-        return self.crystal.get_U()#np.array([self.crystal.get_U()], dtype=np.float64).reshape(3, 3)
+        return self.crystal.get_U()
 
     @property
     def B_matrix(self) -> np.array:
-        return self.crystal.get_B()#np.array([self.crystal.get_B()], dtype=np.float64).reshape(3, 3)
+        return self.crystal.get_B()
 
     @property
     def A_matrix(self) -> np.array:
-        return matrix.sqr(self.crystal.get_A())#np.array([self.crystal.get_A()], dtype=np.float64).reshape(3, 3)
+        return matrix.sqr(self.crystal.get_A())
 
     @property
     def mosaicity_covariance_matrix(self) -> np.array:
@@ -501,10 +539,6 @@ class ModelState(object):
 
         """
         ds_dp = self._U_parameterisation.get_ds_dp()
-        #n = len(ds_dp)
-        #s = np.array([ds_dp[i] for i in range(n)], dtype=np.float64).reshape(n, 3, 3)
-        #print(ds_dp)
-        #assert 0
         return flex.mat3_double(ds_dp)
 
     @property
@@ -514,8 +548,6 @@ class ModelState(object):
 
         """
         ds_dp = self._B_parameterisation.get_ds_dp()
-        #n = len(ds_dp)
-        #s = np.array([ds_dp[i] for i in range(n)], dtype=np.float64).reshape(n, 3, 3)
         return flex.mat3_double(ds_dp)
 
     @property
@@ -611,18 +643,16 @@ class ReflectionModelState(object):
         """
 
         # Compute the reciprocal lattice vector
-        self._h = h#np.array(h, dtype=np.float64)
-        self._r = state.A_matrix * self._h#np.einsum("ij,j->i", state.A_matrix, self._h)
+        self._h = h
+        self._r = state.A_matrix * self._h
         self._s0 = np.array(s0, dtype=np.float64)
         self._norm_s0 = (self._s0 / norm(self._s0)).flatten()
-        self._norm_s0_cctbx = matrix.col((
-            self._norm_s0[0],self._norm_s0[1], self._norm_s0[2]
-        ))
-        print(self._norm_s0_cctbx)
-        print(self._r)
+        self._norm_s0_cctbx = matrix.col(
+            (self._norm_s0[0], self._norm_s0[1], self._norm_s0[2])
+        )
 
         self.state = state
-        self._Q = None
+        self._Q_cctbx = matrix.sqr((0, 0, 0, 0, 0, 0, 0, 0, 0))
 
         n_params = 0
         if not self.state.is_orientation_fixed:
@@ -635,10 +665,8 @@ class ReflectionModelState(object):
             n_params += len(self.state.L_params)
 
         # The array of derivatives
-        #self._dr_dp = np.zeros(shape=(3, n_params), dtype=np.float64)
-        #self._ds_dp = np.zeros(shape=(3, 3, n_params), dtype=np.float64)
-        self._dr_dp = flex.vec3_double(n_params, (0,0,0))
-        self._ds_dp = flex.double(flex.grid(3,3,n_params), 0)
+        self._dr_dp = flex.vec3_double(n_params, (0, 0, 0))
+        self._ds_dp = flex.double(flex.grid(3, 3, n_params), 0)
         self._dl_dp = flex.double(n_params)
 
         if self.state.is_mosaic_spread_angular:
@@ -648,12 +676,19 @@ class ReflectionModelState(object):
             q1 /= norm(q1)
             q2 = np.cross(norm_r, q1)
             q2 /= norm(q2)
-            self._Q = np.array([q1, q2, norm_r], dtype=np.float64).reshape(3, 3)
-            self._Q_cctbx = matrix.sqr((
-                    q1[0], q1[1], q1[2],
-                    q2[0], q2[1], q2[2],
-                    norm_r[0], norm_r[1], norm_r[2]
-            ))
+            self._Q_cctbx = matrix.sqr(
+                (
+                    q1[0],
+                    q1[1],
+                    q1[2],
+                    q2[0],
+                    q2[1],
+                    q2[2],
+                    norm_r[0],
+                    norm_r[1],
+                    norm_r[2],
+                )
+            )
             self._Q_cctbx_T = matrix.sqr(self._Q_cctbx.transpose())
         self._recalc_sigma()
         self._recalc_sigma_lambda()
@@ -665,7 +700,7 @@ class ReflectionModelState(object):
         if self.state.is_mosaic_spread_angular:
             # Define rotation for W sigma components
             # check if r has actually been updated
-            '''if (not self.state.is_orientation_fixed) or (
+            if (not self.state.is_orientation_fixed) or (
                 not self.state.is_unit_cell_fixed
             ):
                 r = np.array(self._r)
@@ -674,23 +709,23 @@ class ReflectionModelState(object):
                 q1 /= norm(q1)
                 q2 = np.cross(norm_r, q1)
                 q2 /= norm(q2)
-                self._Q = np.array([q1, q2, norm_r], dtype=np.float64).reshape(3, 3)
-                #print(self._Q)
-                self._Q_cctbx = matrix.sqr((
-                    q1[0], q1[1], q1[2],
-                    q2[0], q2[1], q2[2],
-                    norm_r[0], norm_r[1], norm_r[2]
-                ))
-                self._Q_cctbx_T = self._Q_cctbx.transpose()
-            #M_np = np.array(list(M), dtype=np.float64).reshape(3, 3)
-            #self._sigma = np.matmul(np.matmul(self._Q.T, M_np), self._Q)
-            self._sigma = (self._Q_cctbx_T * M) * self._Q_cctbx'''
-            self._sigma = recalc_sigma_angular(
-                M,self._Q_cctbx, self._Q_cctbx_T,
-                self.state.is_orientation_fixed, self.state.is_unit_cell_fixed,
-                self._r, self._norm_s0_cctbx)
+                self._Q_cctbx = matrix.sqr(
+                    (
+                        q1[0],
+                        q1[1],
+                        q1[2],
+                        q2[0],
+                        q2[1],
+                        q2[2],
+                        norm_r[0],
+                        norm_r[1],
+                        norm_r[2],
+                    )
+                )
+                self._Q_cctbx_T = matrix.sqr(self._Q_cctbx.transpose())
+            self._sigma = (self._Q_cctbx_T * M) * self._Q_cctbx
         else:
-            self._sigma = M  #
+            self._sigma = M
 
     def _recalc_sigma_lambda(self):
         # Get the wavelength spread
@@ -716,35 +751,7 @@ class ReflectionModelState(object):
         # Compute derivatives w.r.t U parameters
         n_tot = 0
         state = self.state
-        '''if not state.is_orientation_fixed:
-            dU_dp = self.state.dU_dp
-            n_U_params = dU_dp.shape[0]
-            dUBh = np.einsum("lij,jk,k->il", dU_dp, state.B_matrix, self._h)
-            self._dr_dp[:, n_tot : n_tot + n_U_params] = dUBh
-            n_tot += n_U_params
-
-        # Compute derivatives w.r.t B parameters
-        if not state.is_unit_cell_fixed:
-            dB_dp = self.state.dB_dp
-            n_B_params = dB_dp.shape[0]  # state.B_params.size
-            UdBh = np.einsum("ij,ljk,k->il", state.U_matrix, dB_dp, self._h)
-            self._dr_dp[:, n_tot : n_tot + n_B_params] = UdBh
-            n_tot += n_B_params'''
         if (not state.is_orientation_fixed) or (not state.is_unit_cell_fixed):
-            '''for v in (self.state.dU_dp,
-                self.state.dB_dp,
-                self._h,
-                state.B_matrix,
-                state.U_matrix,
-                state.is_orientation_fixed,
-                state.is_unit_cell_fixed,
-                self._dr_dp.size()
-            ):
-                print(type(v))
-            print(self._h)
-            print(state.B_matrix)
-            print(state.U_matrix)'''
-            
             self._dr_dp = calc_dr_dp(
                 self.state.dU_dp,
                 self.state.dB_dp,
@@ -753,7 +760,7 @@ class ReflectionModelState(object):
                 state.U_matrix,
                 state.is_orientation_fixed,
                 state.is_unit_cell_fixed,
-                self._dr_dp.size()
+                self._dr_dp.size(),
             )
         if not state.is_orientation_fixed:
             n_tot += self.state.dU_dp.all()[0]
@@ -763,16 +770,14 @@ class ReflectionModelState(object):
         # Compute derivatives w.r.t M parameters
         if not state.is_mosaic_spread_fixed:
             dM_dp = self.state.dM_dp
-            n_M_params = dM_dp.all()[0]  # state.M_params.size
-            '''if state.is_mosaic_spread_angular:
-                QTMQ = np.einsum("ij,mjk,kl->ilm", self._Q.T, dM_dp, self._Q)
-                self._ds_dp[:, :, n_tot : n_tot + n_M_params] = QTMQ
-            else:
-                self._ds_dp[:, :, n_tot : n_tot + n_M_params] = np.transpose(
-                    dM_dp, axes=(1, 2, 0)
-                )'''
-            self._ds_dp = calc_ds_dp(dM_dp, self._Q_cctbx, n_tot, self._ds_dp.all()[2],state.is_mosaic_spread_angular)
-            #print(self._ds_dp)
+            n_M_params = dM_dp.all()[0]
+            self._ds_dp = calc_ds_dp(
+                dM_dp,
+                self._Q_cctbx,
+                n_tot,
+                self._ds_dp.all()[2],
+                state.is_mosaic_spread_angular,
+            )
             n_tot += n_M_params
         # Compute derivatives   w.r.t L parameters
         if not state.is_wavelength_spread_fixed:
@@ -787,7 +792,7 @@ class ReflectionModelState(object):
         Return the reciprocal lattice vector
 
         """
-        return self._r#.reshape(3, 1)
+        return self._r  # .reshape(3, 1)
 
     def get_dS_dp(self) -> np.array:
         """
