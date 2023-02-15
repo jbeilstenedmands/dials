@@ -723,52 +723,52 @@ class FisherScoringMaximumLikelihood(FisherScoringMaximumLikelihoodBase):
         # Get some matrices
         U = list(self.model.U_matrix)
         M = list(self.model.mosaicity_covariance_matrix)
+        if not logger.disabled:
+            # Print some information
+            format_string1 = "  Unit cell: (%.3f, %.3f, %.3f, %.3f, %.3f, %.3f)"
+            format_string2 = "  | % .6f % .6f % .6f |"
+            format_string3 = "  | % .2e % .2e % .2e |"
 
-        # Print some information
-        format_string1 = "  Unit cell: (%.3f, %.3f, %.3f, %.3f, %.3f, %.3f)"
-        format_string2 = "  | % .6f % .6f % .6f |"
-        format_string3 = "  | % .2e % .2e % .2e |"
+            logger.info(f"\nIteration: {len(self.history)}")
+            if not self.model.is_unit_cell_fixed:
+                logger.info("\n" + format_string1 % unit_cell)
+            if not self.model.is_orientation_fixed:
+                logger.info(
+                    "\n".join(
+                        [
+                            "",
+                            "  U matrix (orientation)",
+                            format_string2 % tuple(U[0:3]),
+                            format_string2 % tuple(U[3:6]),
+                            format_string2 % tuple(U[6:9]),
+                        ]
+                    )
+                )
+            if not self.model.is_mosaic_spread_fixed:
+                logger.info(
+                    "\n".join(
+                        [
+                            "",
+                            "  Sigma M",
+                            format_string3 % tuple(M[0:3]),
+                            format_string3 % tuple(M[3:6]),
+                            format_string3 % tuple(M[6:9]),
+                        ]
+                    )
+                )
 
-        logger.info(f"\nIteration: {len(self.history)}")
-        if not self.model.is_unit_cell_fixed:
-            logger.info("\n" + format_string1 % unit_cell)
-        if not self.model.is_orientation_fixed:
             logger.info(
                 "\n".join(
                     [
                         "",
-                        "  U matrix (orientation)",
-                        format_string2 % tuple(U[0:3]),
-                        format_string2 % tuple(U[3:6]),
-                        format_string2 % tuple(U[6:9]),
-                    ]
-                )
-            )
-        if not self.model.is_mosaic_spread_fixed:
-            logger.info(
-                "\n".join(
-                    [
+                        "  ln(L) = %f" % lnL,
                         "",
-                        "  Sigma M",
-                        format_string3 % tuple(M[0:3]),
-                        format_string3 % tuple(M[3:6]),
-                        format_string3 % tuple(M[6:9]),
+                        "  R.M.S.D (local) = %.5g" % sqrt(mse),
+                        "",
+                        "  R.M.S.D (pixel): X = %.3f, Y = %.3f" % tuple(rmsd),
                     ]
                 )
             )
-
-        logger.info(
-            "\n".join(
-                [
-                    "",
-                    "  ln(L) = %f" % lnL,
-                    "",
-                    "  R.M.S.D (local) = %.5g" % sqrt(mse),
-                    "",
-                    "  R.M.S.D (pixel): X = %.3f, Y = %.3f" % tuple(rmsd),
-                ]
-            )
-        )
 
         # Append the parameters to the history
         self.history.append(
@@ -776,8 +776,8 @@ class FisherScoringMaximumLikelihood(FisherScoringMaximumLikelihoodBase):
                 "parameters": list(x),
                 "likelihood": lnL,
                 "unit_cell": unit_cell,
-                "orientation": list(U),
-                "rlp_mosaicity": list(M),
+                "orientation": U,
+                "rlp_mosaicity": M,
                 "rmsd": tuple(rmsd),
             }
         )
@@ -846,18 +846,20 @@ class Refiner(object):
         self.state.active_parameters = self.parameters
 
         # Print summary table of refinement.
-        rows = []
-        headers = ["Iteration", "likelihood", "RMSD (pixel) X,Y"]
-        for i, h in enumerate(self.ml.history):
-            l = h["likelihood"]
-            rmsd = h["rmsd"]
-            rows.append([str(i), f"{l:.4f}", f"{rmsd[0]:.3f}, {rmsd[1]:.3f}"])
-        logger.info(
-            "\nRefinement steps:\n\n" + textwrap.indent(tabulate(rows, headers), " ")
-        )
+        if not logger.disabled:
+            rows = []
+            headers = ["Iteration", "likelihood", "RMSD (pixel) X,Y"]
+            for i, h in enumerate(self.ml.history):
+                l = h["likelihood"]
+                rmsd = h["rmsd"]
+                rows.append([str(i), f"{l:.4f}", f"{rmsd[0]:.3f}, {rmsd[1]:.3f}"])
+            logger.info(
+                "\nRefinement steps:\n\n"
+                + textwrap.indent(tabulate(rows, headers), " ")
+            )
 
         # Print the eigen values and vectors of sigma_m
-        if not self.state.is_mosaic_spread_fixed:
+        if not self.state.is_mosaic_spread_fixed and not logger.disabled:
             logger.info("\nDecomposition of Sigma_M:")
             print_eigen_values_and_vectors(self.state.mosaicity_covariance_matrix)
 
@@ -1056,23 +1058,35 @@ class RefinerData(object):
         ctot_list = damp_outlier_intensity_weights(ctot_list)
 
         # Print the mean covariance
-        """Smean = np.mean(Sobs_list, axis=2)
-        logger.info("")
-        logger.info("Mean observed covariance:")
-        logger.info(print_matrix_np(Smean))
-        print_eigen_values_and_vectors_of_observed_covariance(Smean, s0)"""
+        if not logger.disabled:
+            Smean = np.array(
+                [
+                    [
+                        np.mean([S[0] for S in Sobs_list]),
+                        np.mean([S[1] for S in Sobs_list]),
+                    ],
+                    [
+                        np.mean([S[2] for S in Sobs_list]),
+                        np.mean([S[3] for S in Sobs_list]),
+                    ],
+                ]
+            ).reshape(2, 2)
+            logger.info("")
+            logger.info("Mean observed covariance:")
+            logger.info(print_matrix_np(Smean))
+            print_eigen_values_and_vectors_of_observed_covariance(Smean, s0)
 
-        # Compute the distance from the Ewald sphere
-        epsilon = flex.double(
-            s0_length - matrix.col(s).length() for s in reflections["s2"]
-        )
-        mv = flex.mean_and_variance(epsilon)
-        logger.info("")
-        logger.info("Mean distance from Ewald sphere: %.3g" % mv.mean())
-        logger.info(
-            "Variance in distance from Ewald sphere: %.3g"
-            % mv.unweighted_sample_variance()
-        )
+            # Compute the distance from the Ewald sphere
+            epsilon = flex.double(
+                s0_length - matrix.col(s).length() for s in reflections["s2"]
+            )
+            mv = flex.mean_and_variance(epsilon)
+            logger.info("")
+            logger.info("Mean distance from Ewald sphere: %.3g" % mv.mean())
+            logger.info(
+                "Variance in distance from Ewald sphere: %.3g"
+                % mv.unweighted_sample_variance()
+            )
 
         # Return the profile refiner data
         return RefinerData(s0, sp_list, h_list, ctot_list, mobs_list, Sobs_list)
