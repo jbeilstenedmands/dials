@@ -241,6 +241,48 @@ namespace dials { namespace algorithms { namespace boost_python {
     return ds_dp;
   }
 
+  af::shared<vec3<double>> calc_dr_dp(
+    const af::shared<mat3<double>> &dUdp,
+    const af::shared<mat3<double>> &dBdp,
+    const cctbx::miller::index<> &h,
+    mat3<double> B,
+    mat3<double> U,
+    bool is_orientation_fixed,
+    bool is_unit_cell_fixed,
+    int n_tot_params)
+  {
+    af::shared<vec3<double>> dr_dp(n_tot_params); 
+    int n_U_params(dUdp.size());
+    int n_B_params(dBdp.size());
+    int n_tot = 0;
+    if (!is_orientation_fixed){
+      for (int i=0;i<n_U_params;++i){
+        //mat3<double> dUdp_i(
+        //  dUdp(i,0,0), dUdp(i,0,1),dUdp(i,0,2),
+        //  dUdp(i,1,0), dUdp(i,1,1),dUdp(i,1,2),
+        //  dUdp(i,2,0), dUdp(i,2,1),dUdp(i,2,2)
+        //);
+        vec3<double> dUBh((dUdp[i] * B) * h);
+        dr_dp[i] = dUBh;
+      }
+      n_tot += n_U_params;
+    }
+
+    if (!is_unit_cell_fixed){
+      for (int i=0;i<n_B_params;++i){
+        //mat3<double> dBdp_i(
+        //  dBdp(i,0,0), dBdp(i,0,1),dBdp(i,0,2),
+        //  dBdp(i,1,0), dBdp(i,1,1),dBdp(i,1,2),
+        //  dBdp(i,2,0), dBdp(i,2,1),dBdp(i,2,2)
+        //);
+        vec3<double> UdBh((U * dBdp[i]) * h);
+        int p_idx = n_tot + i;
+        dr_dp[p_idx] = UdBh;
+      }
+    }
+    return dr_dp;
+  }
+
   af::versa<double, af::c_grid<2>> cpp_fisher_information(
     double ctot,
     double S22,
@@ -319,6 +361,20 @@ namespace dials { namespace algorithms { namespace boost_python {
     return rotated;
   }
 
+  af::shared<vec3<double>> cpp_rotate_vec3_double(
+    const mat3<double> &R,
+    const af::ref<vec3<double>> &S
+  ){
+    //np.einsum("ij,jk->ik", R, A)
+    //assume first two dimensions of S are 3,3
+    int n = S.size();
+    af::shared<vec3<double>> rotated(n);
+    for (int i=0;i<n;++i){
+      rotated[i] = R * S[i];
+    }
+    return rotated;
+  }
+
   af::versa<double, af::c_grid<3>> cpp_compute_dSbar(
     const mat3<double> &S,
     const af::ref<double, af::c_grid<3>> &dS
@@ -349,7 +405,7 @@ namespace dials { namespace algorithms { namespace boost_python {
   af::shared<vec2<double>> cpp_compute_dmbar(
     const mat3<double> &S,
     const af::ref<double, af::c_grid<3>> &dS,
-    const af::ref<double, af::c_grid<2>> &dmu,
+    const af::ref<vec3<double>> &dmu,
     double epsilon
   ){
     int n_derivs = dS.accessor()[2];
@@ -359,8 +415,8 @@ namespace dials { namespace algorithms { namespace boost_python {
       double S22_inv = 1/S[8];
       vec2<double> dS12(dS(0,2,i), dS(1,2,i));
       double dS22 = dS(2,2,i);
-      vec2<double> dmu1(dmu(0,i), dmu(1,i));
-      double dep = -1.0 * dmu(2,i);
+      vec2<double> dmu1(dmu[i][0], dmu[i][1]);
+      double dep = -1.0 * dmu[i][2];
       vec2<double> dmbar_i = dmu1 + (dS12 * S22_inv * epsilon) - (S12 * dS22 *  epsilon * pow(S22_inv,2)) + (S12 * S22_inv * dep);
       dmbar[i] = dmbar_i;
     }
@@ -1090,7 +1146,9 @@ namespace dials { namespace algorithms { namespace boost_python {
     def("cpp_compute_dSbar", &cpp_compute_dSbar);
     def("cpp_compute_dmbar", &cpp_compute_dmbar);
     def("calc_ds_dp", &calc_ds_dp);
+    def("calc_dr_dp", &calc_dr_dp);
     def("cpp_rotate_mat3_double", &cpp_rotate_mat3_double);
+    def("cpp_rotate_vec3_double", &cpp_rotate_vec3_double);
 
     class_<PredictorBase>("PredictorBase", no_init)
       .def("predict", &PredictorBase::predict);

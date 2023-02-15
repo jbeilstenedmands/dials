@@ -12,6 +12,7 @@ from scitbx import linalg, matrix
 from dials.algorithms.profile_model.ellipsoid import (
     mosaicity_from_eigen_decomposition,
     calc_ds_dp,
+    calc_dr_dp,
 )
 from dials.algorithms.refinement.parameterisation.crystal_parameters import (
     CrystalOrientationParameterisation,
@@ -433,15 +434,15 @@ class ModelState(object):
 
     @property
     def U_matrix(self) -> np.array:
-        return np.array([self.crystal.get_U()], dtype=np.float64).reshape(3, 3)
+        return self.crystal.get_U()#np.array([self.crystal.get_U()], dtype=np.float64).reshape(3, 3)
 
     @property
     def B_matrix(self) -> np.array:
-        return np.array([self.crystal.get_B()], dtype=np.float64).reshape(3, 3)
+        return self.crystal.get_B()#np.array([self.crystal.get_B()], dtype=np.float64).reshape(3, 3)
 
     @property
     def A_matrix(self) -> np.array:
-        return np.array([self.crystal.get_A()], dtype=np.float64).reshape(3, 3)
+        return matrix.sqr(self.crystal.get_A())#np.array([self.crystal.get_A()], dtype=np.float64).reshape(3, 3)
 
     @property
     def mosaicity_covariance_matrix(self) -> np.array:
@@ -499,9 +500,11 @@ class ModelState(object):
 
         """
         ds_dp = self._U_parameterisation.get_ds_dp()
-        n = len(ds_dp)
-        s = np.array([ds_dp[i] for i in range(n)], dtype=np.float64).reshape(n, 3, 3)
-        return s
+        #n = len(ds_dp)
+        #s = np.array([ds_dp[i] for i in range(n)], dtype=np.float64).reshape(n, 3, 3)
+        #print(ds_dp)
+        #assert 0
+        return flex.mat3_double(ds_dp)
 
     @property
     def dB_dp(self) -> np.array:
@@ -510,9 +513,9 @@ class ModelState(object):
 
         """
         ds_dp = self._B_parameterisation.get_ds_dp()
-        n = len(ds_dp)
-        s = np.array([ds_dp[i] for i in range(n)], dtype=np.float64).reshape(n, 3, 3)
-        return s
+        #n = len(ds_dp)
+        #s = np.array([ds_dp[i] for i in range(n)], dtype=np.float64).reshape(n, 3, 3)
+        return flex.mat3_double(ds_dp)
 
     @property
     def dM_dp(self) -> np.array:
@@ -607,8 +610,8 @@ class ReflectionModelState(object):
         """
 
         # Compute the reciprocal lattice vector
-        self._h = np.array(h, dtype=np.float64)
-        self._r = np.einsum("ij,j->i", state.A_matrix, self._h)
+        self._h = h#np.array(h, dtype=np.float64)
+        self._r = matrix.col(state.A_matrix * self._h)#np.einsum("ij,j->i", state.A_matrix, self._h)
         self._s0 = np.array(s0, dtype=np.float64)
         self._norm_s0 = (self._s0 / norm(self._s0)).flatten()
 
@@ -626,13 +629,15 @@ class ReflectionModelState(object):
             n_params += len(self.state.L_params)
 
         # The array of derivatives
-        self._dr_dp = np.zeros(shape=(3, n_params), dtype=np.float64)
+        #self._dr_dp = np.zeros(shape=(3, n_params), dtype=np.float64)
         #self._ds_dp = np.zeros(shape=(3, 3, n_params), dtype=np.float64)
+        self._dr_dp = flex.vec3_double(n_params, (0,0,0))
         self._ds_dp = flex.double(flex.grid(3,3,n_params), 0)
         self._dl_dp = flex.double(n_params)
 
         if self.state.is_mosaic_spread_angular:
-            norm_r = self._r / norm(self._r)
+            r = np.array(self._r)
+            norm_r = r / norm(r)
             q1 = np.cross(norm_r, self._norm_s0)
             q1 /= norm(q1)
             q2 = np.cross(norm_r, q1)
@@ -656,7 +661,8 @@ class ReflectionModelState(object):
             if (not self.state.is_orientation_fixed) or (
                 not self.state.is_unit_cell_fixed
             ):
-                norm_r = self._r / norm(self._r)
+                r = np.array(self._r)
+                norm_r = r / norm(r)
                 q1 = np.cross(norm_r, self._norm_s0)
                 q1 /= norm(q1)
                 q2 = np.cross(norm_r, q1)
@@ -689,7 +695,7 @@ class ReflectionModelState(object):
 
         # Set the reciprocal lattice vector
         if (not self.state.is_orientation_fixed) or (not self.state.is_unit_cell_fixed):
-            self._r = np.matmul(self.state.A_matrix, self._h)
+            self._r = self.state.A_matrix * self._h
         if not self.state.is_wavelength_spread_fixed:
             self._recalc_sigma_lambda()
         if not self.state.is_mosaic_spread_fixed:
@@ -698,7 +704,7 @@ class ReflectionModelState(object):
         # Compute derivatives w.r.t U parameters
         n_tot = 0
         state = self.state
-        if not state.is_orientation_fixed:
+        '''if not state.is_orientation_fixed:
             dU_dp = self.state.dU_dp
             n_U_params = dU_dp.shape[0]
             dUBh = np.einsum("lij,jk,k->il", dU_dp, state.B_matrix, self._h)
@@ -711,7 +717,36 @@ class ReflectionModelState(object):
             n_B_params = dB_dp.shape[0]  # state.B_params.size
             UdBh = np.einsum("ij,ljk,k->il", state.U_matrix, dB_dp, self._h)
             self._dr_dp[:, n_tot : n_tot + n_B_params] = UdBh
-            n_tot += n_B_params
+            n_tot += n_B_params'''
+        if (not state.is_orientation_fixed) or (not state.is_unit_cell_fixed):
+            '''for v in (self.state.dU_dp,
+                self.state.dB_dp,
+                self._h,
+                state.B_matrix,
+                state.U_matrix,
+                state.is_orientation_fixed,
+                state.is_unit_cell_fixed,
+                self._dr_dp.size()
+            ):
+                print(type(v))
+            print(self._h)
+            print(state.B_matrix)
+            print(state.U_matrix)'''
+            
+            self._dr_dp = calc_dr_dp(
+                self.state.dU_dp,
+                self.state.dB_dp,
+                self._h,
+                state.B_matrix,
+                state.U_matrix,
+                state.is_orientation_fixed,
+                state.is_unit_cell_fixed,
+                self._dr_dp.size()
+            )
+        if not state.is_orientation_fixed:
+            n_tot += self.state.dU_dp.all()[0]
+        if not state.is_unit_cell_fixed:
+            n_tot += self.state.dB_dp.all()[0]
 
         # Compute derivatives w.r.t M parameters
         if not state.is_mosaic_spread_fixed:
@@ -740,7 +775,7 @@ class ReflectionModelState(object):
         Return the reciprocal lattice vector
 
         """
-        return self._r.reshape(3, 1)
+        return self._r#.reshape(3, 1)
 
     def get_dS_dp(self) -> np.array:
         """
