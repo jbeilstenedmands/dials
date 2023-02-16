@@ -202,20 +202,19 @@ namespace dials { namespace algorithms { namespace boost_python {
     return V_vec;
   }
 
-  mat3<double> recalc_sigma_angular(
-    const mat3<double> &M,
-    mat3<double> &Q,
-    mat3<double> &QT,
-    bool is_orientation_fixed,
-    bool is_unit_cell_fixed,
-    const vec3<double> &r,
-    const vec3<double> &norm_s0
-  ){
-    if (!is_orientation_fixed | !is_unit_cell_fixed){
+  mat3<double> recalc_sigma_angular(const mat3<double> &M,
+                                    mat3<double> &Q,
+                                    mat3<double> &QT,
+                                    bool is_orientation_fixed,
+                                    bool is_unit_cell_fixed,
+                                    const vec3<double> &r,
+                                    const vec3<double> &norm_s0) {
+    if (!is_orientation_fixed | !is_unit_cell_fixed) {
       vec3<double> norm_r = r.normalize();
       vec3<double> q1 = norm_r.cross(norm_s0).normalize();
       vec3<double> q2 = norm_r.cross(q1).normalize();
-      mat3<double> Q((q1[0], q1[1], q1[2], q2[0], q2[1], q2[2], norm_r[0], norm_r[1], norm_r[2]));
+      mat3<double> Q(
+        (q1[0], q1[1], q1[2], q2[0], q2[1], q2[2], norm_r[0], norm_r[1], norm_r[2]));
       mat3<double> QT = Q.transpose();
     }
     mat3<double> sigma((QT * M) * Q);
@@ -227,60 +226,60 @@ namespace dials { namespace algorithms { namespace boost_python {
     const mat3<double> &Q,
     int start,
     int n_tot_params,
-    bool is_angular)
-  {
-    af::versa<double, af::c_grid<3>> ds_dp(af::c_grid<3>(3, 3, n_tot_params)); 
+    bool is_angular) {
+    af::versa<double, af::c_grid<3>> ds_dp(af::c_grid<3>(3, 3, n_tot_params));
     int n_M_params(dMdp.accessor()[0]);
-    if (is_angular){
+    if (is_angular) {
       mat3<double> QT = Q.transpose();
-      for (int i=0;i<n_M_params;++i){
-        mat3<double> dMdp_i(
-          dMdp(i,0,0), dMdp(i,0,1),dMdp(i,0,2),
-          dMdp(i,1,0), dMdp(i,1,1),dMdp(i,1,2),
-          dMdp(i,2,0), dMdp(i,2,1),dMdp(i,2,2)
-        );
+      for (int i = 0; i < n_M_params; ++i) {
+        mat3<double> dMdp_i(dMdp(i, 0, 0),
+                            dMdp(i, 0, 1),
+                            dMdp(i, 0, 2),
+                            dMdp(i, 1, 0),
+                            dMdp(i, 1, 1),
+                            dMdp(i, 1, 2),
+                            dMdp(i, 2, 0),
+                            dMdp(i, 2, 1),
+                            dMdp(i, 2, 2));
         mat3<double> dSdp_i((QT * dMdp_i) * Q);
         int p_idx = i + start;
-        for (int j=0;j<3;++j){
-          for (int k=0;k<3;++k){
-            ds_dp(j,k,p_idx) = dSdp_i(j,k);
+        for (int j = 0; j < 3; ++j) {
+          for (int k = 0; k < 3; ++k) {
+            ds_dp(j, k, p_idx) = dSdp_i(j, k);
+          }
+        }
+      }
+    } else {
+      for (int i = 0; i < n_M_params; ++i) {
+        int p_idx = i + start;
+        for (int j = 0; j < 3; ++j) {
+          for (int k = 0; k < 3; ++k) {
+            ds_dp(j, k, p_idx) = dMdp(i, j, k);
           }
         }
       }
     }
-    else {
-      for (int i=0;i<n_M_params;++i){
-          int p_idx = i + start;
-          for (int j=0;j<3;++j){
-            for (int k=0;k<3;++k){
-              ds_dp(j,k,p_idx) = dMdp(i, j,k);
-            }
-          }
-        }
-      }
     return ds_dp;
   }
 
-  af::shared<vec3<double>> calc_dr_dp(
-    const af::shared<mat3<double>> &dUdp,
-    const af::shared<mat3<double>> &dBdp,
-    const cctbx::miller::index<> &h,
-    mat3<double> B,
-    mat3<double> U,
-    bool is_orientation_fixed,
-    bool is_unit_cell_fixed,
-    int n_tot_params)
-  {
-    af::shared<vec3<double>> dr_dp(n_tot_params); 
+  af::shared<vec3<double>> calc_dr_dp(const af::shared<mat3<double>> &dUdp,
+                                      const af::shared<mat3<double>> &dBdp,
+                                      const cctbx::miller::index<> &h,
+                                      mat3<double> B,
+                                      mat3<double> U,
+                                      bool is_orientation_fixed,
+                                      bool is_unit_cell_fixed,
+                                      int n_tot_params) {
+    af::shared<vec3<double>> dr_dp(n_tot_params);
     int n_U_params(dUdp.size());
     int n_B_params(dBdp.size());
     int n_tot = 0;
-    if (!is_orientation_fixed){
-      for (int i=0;i<n_U_params;++i){
-        //mat3<double> dUdp_i(
-        //  dUdp(i,0,0), dUdp(i,0,1),dUdp(i,0,2),
-        //  dUdp(i,1,0), dUdp(i,1,1),dUdp(i,1,2),
-        //  dUdp(i,2,0), dUdp(i,2,1),dUdp(i,2,2)
+    if (!is_orientation_fixed) {
+      for (int i = 0; i < n_U_params; ++i) {
+        // mat3<double> dUdp_i(
+        //   dUdp(i,0,0), dUdp(i,0,1),dUdp(i,0,2),
+        //   dUdp(i,1,0), dUdp(i,1,1),dUdp(i,1,2),
+        //   dUdp(i,2,0), dUdp(i,2,1),dUdp(i,2,2)
         //);
         vec3<double> dUBh((dUdp[i] * B) * h);
         dr_dp[i] = dUBh;
@@ -288,12 +287,12 @@ namespace dials { namespace algorithms { namespace boost_python {
       n_tot += n_U_params;
     }
 
-    if (!is_unit_cell_fixed){
-      for (int i=0;i<n_B_params;++i){
-        //mat3<double> dBdp_i(
-        //  dBdp(i,0,0), dBdp(i,0,1),dBdp(i,0,2),
-        //  dBdp(i,1,0), dBdp(i,1,1),dBdp(i,1,2),
-        //  dBdp(i,2,0), dBdp(i,2,1),dBdp(i,2,2)
+    if (!is_unit_cell_fixed) {
+      for (int i = 0; i < n_B_params; ++i) {
+        // mat3<double> dBdp_i(
+        //   dBdp(i,0,0), dBdp(i,0,1),dBdp(i,0,2),
+        //   dBdp(i,1,0), dBdp(i,1,1),dBdp(i,1,2),
+        //   dBdp(i,2,0), dBdp(i,2,1),dBdp(i,2,2)
         //);
         vec3<double> UdBh((U * dBdp[i]) * h);
         int p_idx = n_tot + i;
@@ -359,37 +358,38 @@ namespace dials { namespace algorithms { namespace boost_python {
 
   af::versa<double, af::c_grid<3>> cpp_rotate_mat3_double(
     const mat3<double> &R,
-    const af::ref<double, af::c_grid<3>> &S
-  ){
-    //assume first two dimensions of S are 3,3
+    const af::ref<double, af::c_grid<3>> &S) {
+    // assume first two dimensions of S are 3,3
     int n = S.accessor()[2];
-    af::versa<double, af::c_grid<3>> rotated(af::c_grid<3>(3,3,n));
+    af::versa<double, af::c_grid<3>> rotated(af::c_grid<3>(3, 3, n));
     mat3<double> RT = R.transpose();
-    for (int i=0;i<n;++i){
-      mat3<double> S_i(
-        S(0,0,i), S(0,1,i), S(0,2,i),
-        S(1,0,i), S(1,1,i), S(1,2,i),
-        S(2,0,i), S(2,1,i), S(2,2,i)
-      );
+    for (int i = 0; i < n; ++i) {
+      mat3<double> S_i(S(0, 0, i),
+                       S(0, 1, i),
+                       S(0, 2, i),
+                       S(1, 0, i),
+                       S(1, 1, i),
+                       S(1, 2, i),
+                       S(2, 0, i),
+                       S(2, 1, i),
+                       S(2, 2, i));
       mat3<double> S_r = (R * S_i) * RT;
-      for (int j=0;j<3;++j){
-        for (int k=0;k<3;++k){
-          rotated(j,k,i) = S_r(j,k);
+      for (int j = 0; j < 3; ++j) {
+        for (int k = 0; k < 3; ++k) {
+          rotated(j, k, i) = S_r(j, k);
         }
       }
     }
     return rotated;
   }
 
-  af::shared<vec3<double>> cpp_rotate_vec3_double(
-    const mat3<double> &R,
-    const af::ref<vec3<double>> &S
-  ){
-    //np.einsum("ij,jk->ik", R, A)
-    //assume first two dimensions of S are 3,3
+  af::shared<vec3<double>> cpp_rotate_vec3_double(const mat3<double> &R,
+                                                  const af::ref<vec3<double>> &S) {
+    // np.einsum("ij,jk->ik", R, A)
+    // assume first two dimensions of S are 3,3
     int n = S.size();
     af::shared<vec3<double>> rotated(n);
-    for (int i=0;i<n;++i){
+    for (int i = 0; i < n; ++i) {
       rotated[i] = R * S[i];
     }
     return rotated;
@@ -397,47 +397,50 @@ namespace dials { namespace algorithms { namespace boost_python {
 
   af::versa<double, af::c_grid<3>> cpp_compute_dSbar(
     const mat3<double> &S,
-    const af::ref<double, af::c_grid<3>> &dS
-  ){
+    const af::ref<double, af::c_grid<3>> &dS) {
     int n_derivs = dS.accessor()[2];
     af::versa<double, af::c_grid<3>> dSbar(af::c_grid<3>(n_derivs, 2, 2));
-    for (int i=0;i<n_derivs;++i){
-      //#mat3<double> dS_this = 
+    for (int i = 0; i < n_derivs; ++i) {
+      //#mat3<double> dS_this =
       vec2<double> S12(S[2], S[5]);
       vec2<double> S21(S[6], S[7]);
-      double S22_inv = 1/S[8];
-      mat2<double> dS11(dS(0,0,i), dS(0,1,i), dS(1,0,i), dS(1,1,i));
-      vec2<double> dS12(dS(0,2,i), dS(1,2,i));
-      vec2<double> dS21(dS(2,0,i), dS(2,1,i));
-      double dS22 = dS(2,2,i);
-      mat2<double> B(S12[0] * S21[0], S12[0] * S21[1], S12[1]*S21[0], S12[1]*S21[1]);
-      mat2<double> C(S12[0] * dS21[0], S12[0] * dS21[1], S12[1]*dS21[0], S12[1]*dS21[1]);
-      mat2<double> D(dS12[0] * S21[0], dS12[0] * S21[1], dS12[1]*S21[0], dS12[1]*S21[1]);
-      mat2<double> dSbar_i = dS11 + (B * dS22 * pow(S22_inv, 2)) - (C * S22_inv) -(D * S22_inv);
-      dSbar(i,0,0) = dSbar_i(0, 0);
-      dSbar(i,1,0) = dSbar_i(1, 0);
-      dSbar(i,0,1) = dSbar_i(0, 1);
-      dSbar(i,1,1) = dSbar_i(1, 1);
+      double S22_inv = 1 / S[8];
+      mat2<double> dS11(dS(0, 0, i), dS(0, 1, i), dS(1, 0, i), dS(1, 1, i));
+      vec2<double> dS12(dS(0, 2, i), dS(1, 2, i));
+      vec2<double> dS21(dS(2, 0, i), dS(2, 1, i));
+      double dS22 = dS(2, 2, i);
+      mat2<double> B(
+        S12[0] * S21[0], S12[0] * S21[1], S12[1] * S21[0], S12[1] * S21[1]);
+      mat2<double> C(
+        S12[0] * dS21[0], S12[0] * dS21[1], S12[1] * dS21[0], S12[1] * dS21[1]);
+      mat2<double> D(
+        dS12[0] * S21[0], dS12[0] * S21[1], dS12[1] * S21[0], dS12[1] * S21[1]);
+      mat2<double> dSbar_i =
+        dS11 + (B * dS22 * pow(S22_inv, 2)) - (C * S22_inv) - (D * S22_inv);
+      dSbar(i, 0, 0) = dSbar_i(0, 0);
+      dSbar(i, 1, 0) = dSbar_i(1, 0);
+      dSbar(i, 0, 1) = dSbar_i(0, 1);
+      dSbar(i, 1, 1) = dSbar_i(1, 1);
     }
     return dSbar;
   }
 
-  af::shared<vec2<double>> cpp_compute_dmbar(
-    const mat3<double> &S,
-    const af::ref<double, af::c_grid<3>> &dS,
-    const af::ref<vec3<double>> &dmu,
-    double epsilon
-  ){
+  af::shared<vec2<double>> cpp_compute_dmbar(const mat3<double> &S,
+                                             const af::ref<double, af::c_grid<3>> &dS,
+                                             const af::ref<vec3<double>> &dmu,
+                                             double epsilon) {
     int n_derivs = dS.accessor()[2];
     af::shared<vec2<double>> dmbar(n_derivs);
-    for (int i=0;i<n_derivs;++i){
+    for (int i = 0; i < n_derivs; ++i) {
       vec2<double> S12(S[2], S[5]);
-      double S22_inv = 1/S[8];
-      vec2<double> dS12(dS(0,2,i), dS(1,2,i));
-      double dS22 = dS(2,2,i);
+      double S22_inv = 1 / S[8];
+      vec2<double> dS12(dS(0, 2, i), dS(1, 2, i));
+      double dS22 = dS(2, 2, i);
       vec2<double> dmu1(dmu[i][0], dmu[i][1]);
       double dep = -1.0 * dmu[i][2];
-      vec2<double> dmbar_i = dmu1 + (dS12 * S22_inv * epsilon) - (S12 * dS22 *  epsilon * pow(S22_inv,2)) + (S12 * S22_inv * dep);
+      vec2<double> dmbar_i = dmu1 + (dS12 * S22_inv * epsilon)
+                             - (S12 * dS22 * epsilon * pow(S22_inv, 2))
+                             + (S12 * S22_inv * dep);
       dmbar[i] = dmbar_i;
     }
     return dmbar;
@@ -485,7 +488,7 @@ namespace dials { namespace algorithms { namespace boost_python {
     // check ctot > 0
 
     // now sum to get Xbar
-    vec2<double> xbar;
+    vec2<double> xbar(0, 0);
     for (int j = 0; j < n1; ++j) {
       for (int i = 0; i < n2; ++i) {
         xbar[0] += X(j, i, 0) * C(j, i);
@@ -495,7 +498,7 @@ namespace dials { namespace algorithms { namespace boost_python {
     xbar[0] = xbar[0] / ctot;
     xbar[1] = xbar[1] / ctot;
 
-    mat2<double> Sobs;
+    mat2<double> Sobs(0, 0, 0, 0);
     for (int j = 0; j < n1; ++j) {
       for (int i = 0; i < n2; ++i) {
         float_type c_i = C(j, i);
