@@ -337,7 +337,17 @@ class IhTable:
             reflections["asu_miller_index"], self.space_group, self.anomalous
         )
         hkl = reflections["asu_miller_index"]
-        df = pd.DataFrame()
+        data = {}
+        data["intensity"] = flumpy.to_numpy(reflections["intensity"].select(perm))
+        data["variance"] = flumpy.to_numpy(reflections["variance"].select(perm))
+        data["inverse_scale_factor"] = flumpy.to_numpy(
+            reflections["inverse_scale_factor"].select(perm)
+        )
+        if isinstance(additional_cols, list):
+            for col in additional_cols:
+                if col in reflections:
+                    data[col] = flumpy.to_numpy(reflections[col].select(perm))
+        """df = pd.DataFrame()
         df["intensity"] = flumpy.to_numpy(reflections["intensity"])
         df["variance"] = flumpy.to_numpy(reflections["variance"])
         df["inverse_scale_factor"] = flumpy.to_numpy(
@@ -346,14 +356,17 @@ class IhTable:
         if isinstance(additional_cols, list):
             for col in additional_cols:
                 if col in reflections:
-                    df[col] = flumpy.to_numpy(reflections[col])
+                    df[col] = flumpy.to_numpy(reflections[col])"""
         if indices_array:
-            df["loc_indices"] = flumpy.to_numpy(indices_array)
+            data["loc_indices"] = flumpy.to_numpy(indices_array.select(perm))
         else:
-            df["loc_indices"] = np.arange(df.shape[0], dtype=np.uint64)
-        df = df.iloc[flumpy.to_numpy(perm)]
+            data["loc_indices"] = np.arange(perm.size(), dtype=np.uint64)[
+                flumpy.to_numpy(perm)
+            ]
+        # df = df.iloc[flumpy.to_numpy(perm)]
         hkl = hkl.select(perm)
-        df["dataset_id"] = np.full(df.shape[0], dataset_id, dtype=np.uint64)
+        data["dataset_id"] = np.full(perm.size(), dataset_id, dtype=np.uint64)
+        df = pd.DataFrame(data)
         # if data are sorted by asu_index, then up until boundary, should be in same
         # block (still need to read group_id though)
         # sort data, get group ids and block_ids
@@ -517,7 +530,7 @@ class IhTableBlock:
 
     def __init__(self, n_groups: int, n_refl: int, n_datasets: int = 1):
         """Create empty datastructures to which data can later be added."""
-        self.Ih_table = pd.DataFrame()
+        self.Ih_table = []  # pd.DataFrame()
         self.block_selections = [None] * n_datasets
         self.h_index_matrix = sparse.matrix(n_refl, n_groups)
         self._setup_info = {"next_row": 0, "next_dataset": 0, "setup_complete": False}
@@ -526,8 +539,8 @@ class IhTableBlock:
         self.h_expand_matrix = None
         self.derivatives = None
         self.binner = None
-        self._csc_rows = np.array([], dtype=np.uint64).reshape((0,))
-        self._csc_cols = np.array([], dtype=np.uint64).reshape((0,))
+        self._csc_rows = []  # np.array([], dtype=np.uint64).reshape((0,))
+        self._csc_cols = []  # np.array([], dtype=np.uint64).reshape((0,))
         self._csc_h_index_matrix = None
         self._csc_h_expand_matrix = None
         self._hkl = flex.miller_index([])
@@ -570,15 +583,17 @@ Datasets must be added in correct order: expected: {}, this dataset: {}""".forma
             dtype=np.uint64,
         )
 
-        self._csc_cols = np.concatenate([self._csc_cols, cols])
-        self._csc_rows = np.concatenate([self._csc_rows, rows])
+        self._csc_cols.append(cols)  # = np.concatenate([self._csc_cols, cols])
+        self._csc_rows.append(rows)  # = np.concatenate([self._csc_rows, rows])
         self._hkl.extend(hkl)
 
         self.dataset_info[dataset_id] = {"start_index": self._setup_info["next_row"]}
         self._setup_info["next_row"] += len(group_ids)
         self._setup_info["next_dataset"] += 1
         self.dataset_info[dataset_id]["end_index"] = self._setup_info["next_row"]
-        self.Ih_table = pd.concat([self.Ih_table, reflections], ignore_index=True)
+        self.Ih_table.append(
+            reflections
+        )  # = pd.concat([self.Ih_table, reflections], ignore_index=True)
         if "loc_indices" in reflections:
             self.block_selections[dataset_id] = reflections["loc_indices"].to_numpy()
         else:
@@ -595,6 +610,9 @@ Datasets must be added in correct order: expected: {}, this dataset: {}""".forma
             self._setup_info["next_row"] == self.h_index_matrix.n_rows
         ), """
 Not all rows of h_index_matrix appear to be filled in IhTableBlock setup."""
+        self._csc_cols = np.concatenate(self._csc_cols)
+        self._csc_rows = np.concatenate(self._csc_rows)
+        self.Ih_table = pd.concat(self.Ih_table, ignore_index=True)
         self.h_expand_matrix = self.h_index_matrix.transpose()
         data = np.full(self._csc_cols.size, 1.0)
         self._csc_h_index_matrix = csc_matrix((data, (self._csc_rows, self._csc_cols)))
