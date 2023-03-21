@@ -1,0 +1,1 @@
+``dials.import convert_stills_to_sequences=True``: Correctly transfer individual beam models
