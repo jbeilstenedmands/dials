@@ -565,6 +565,7 @@ class MetaDataUpdater:
         if self.params.geometry.convert_stills_to_sequences:
             if any(not isinstance(i, ImageSequence) for i in experiments.imagesets()):
                 files_to_indiv = defaultdict(int)
+                files_to_beams = defaultdict(list)
                 beams = []
                 formats = []
                 detectors = []
@@ -578,7 +579,8 @@ class MetaDataUpdater:
                             detectors.append(iset.get_detector())
                             formats.append(iset.get_format_class())
                             iset_params.append(iset.params())
-                        files_to_indiv[iset.get_path(0)] += 1
+                        files_to_indiv[path] += 1
+                        files_to_beams[path].append(iset.get_beam())
                     else:
                         existing_isets_sequences.append(iset)
 
@@ -607,7 +609,7 @@ class MetaDataUpdater:
                         new_experiments.append(
                             Experiment(
                                 imageset=sequence,
-                                beam=sequence.get_beam(),
+                                beam=files_to_beams[file][j],
                                 detector=sequence.get_detector(),
                                 goniometer=sequence.get_goniometer(),
                                 scan=subset.get_scan(),
