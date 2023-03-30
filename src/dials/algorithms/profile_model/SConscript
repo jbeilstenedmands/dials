@@ -29,3 +29,9 @@ env.SharedLibrary(
     source=["ellipsoid/boost_python/ext.cc"],
     LIBS=env["LIBS"],
 )
+
+env.SharedLibrary(
+    target="#/lib/dials_algorithms_profile_model_ellipsoid_refiner_ext",
+    source=["ellipsoid/refiner.cc"],
+    LIBS=env["LIBS"],
+)
