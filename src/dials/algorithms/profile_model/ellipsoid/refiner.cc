@@ -4,7 +4,9 @@
 #include <dxtbx/model/panel.h>
 #include <cmath>
 #include <dials/algorithms/profile_model/ellipsoid/refiner.h>
-
+#include <dials/array_family/reflection_table.h>
+#include <dxtbx/model/experiment.h>
+#include <tuple>
 /*
 scitbx::vec2<double> rse(
     const std::vector<double> &R,
@@ -143,3 +145,152 @@ void test_conditional(double norm_s0,
     }
   }
 }
+
+scitbx::mat3<double> compute_change_of_basis_operation(scitbx::vec3<double> s0,
+                                                       scitbx::vec3<double> s2) {
+  const double TINY = 1e-7;
+  DIALS_ASSERT((s2 - s0).length() > TINY);
+  scitbx::vec3<double> e1 = s2.cross(s0).normalize();
+  scitbx::vec3<double> e2 = s2.cross(e1).normalize();
+  scitbx::vec3<double> e3 = s2.normalize();
+  scitbx::mat3<double> R(e1[0], e1[1], e1[2], e2[0], e2[1], e2[2], e3[0], e3[1], e3[2]);
+  return R;
+}
+
+struct ReflectionStatistics {
+  scitbx::vec3<double> sp;
+  double ctot;
+  scitbx::vec2<double> xbar;
+  scitbx::mat2<double> Sobs;
+};
+
+ReflectionStatistics reflection_statistics(const dxtbx::model::Panel panel,
+                                           const scitbx::vec3<double> xyzobs,
+                                           const double s0_length,
+                                           const scitbx::vec3<double> s0,
+                                           const dials::af::Shoebox<> sbox) {
+  typedef dials::af::Shoebox<>::float_type float_type;
+  scitbx::vec2<double> p1(xyzobs[0], xyzobs[1]);
+  scitbx::vec3<double> sp = panel.get_pixel_lab_coord(p1).normalize() * s0_length;
+  scitbx::mat3<double> R = compute_change_of_basis_operation(s0, sp);
+
+  const scitbx::af::versa<int, scitbx::af::c_grid<3>> mask = sbox.mask;
+  const scitbx::af::const_ref<float_type, scitbx::af::c_grid<3>> data =
+    sbox.data.const_ref();
+  const scitbx::af::versa<float_type, scitbx::af::c_grid<3>> bgrd = sbox.background;
+  int i0 = sbox.bbox[0];
+  int j0 = sbox.bbox[2];
+  int n1 = data.accessor()[1];
+  int n2 = data.accessor()[2];
+
+  scitbx::af::versa<float_type, scitbx::af::c_grid<3>> X(
+    scitbx::af::c_grid<3>(n1, n2, 2));
+  scitbx::af::versa<float_type, scitbx::af::c_grid<2>> C(scitbx::af::c_grid<2>(n1, n2));
+  float_type ctot = 0;
+  for (int j = 0; j < n1; ++j) {
+    for (int i = 0; i < n2; ++i) {
+      float_type c = data(0, j, i) - bgrd(0, j, i);
+      if (c > 0) {
+        if ((mask(0, j, i) & (1 | 4)) == (1 | 4)) {
+          ctot += c;
+          int ii = i + i0;
+          int jj = j + j0;
+          scitbx::vec2<double> sc(ii + 0.5, jj + 0.5);
+          scitbx::vec3<double> s =
+            panel.get_pixel_lab_coord(sc).normalize() * s0_length;
+          scitbx::vec3<double> e = R * s;
+          X(j, i, 0) = e[0];
+          X(j, i, 1) = e[1];
+          C(j, i) = c;
+        }
+      }
+    }
+  }
+  // check ctot > 0
+
+  // now sum to get Xbar
+  scitbx::vec2<double> xbar(0, 0);
+  for (int j = 0; j < n1; ++j) {
+    for (int i = 0; i < n2; ++i) {
+      xbar[0] += X(j, i, 0) * C(j, i);
+      xbar[1] += X(j, i, 1) * C(j, i);
+    }
+  }
+  xbar[0] = xbar[0] / ctot;
+  xbar[1] = xbar[1] / ctot;
+
+  scitbx::mat2<double> Sobs(0, 0, 0, 0);
+  for (int j = 0; j < n1; ++j) {
+    for (int i = 0; i < n2; ++i) {
+      float_type c_i = C(j, i);
+      scitbx::vec2<double> x_i(X(j, i, 0) - xbar[0], X(j, i, 1) - xbar[1]);
+      Sobs[0] += pow(x_i[0], 2) * c_i;
+      Sobs[1] += x_i[0] * x_i[1] * c_i;
+      Sobs[2] += x_i[0] * x_i[1] * c_i;
+      Sobs[3] += pow(x_i[1], 2) * c_i;
+    }
+  }
+  Sobs[0] = Sobs[0] / ctot;
+  Sobs[1] = Sobs[1] / ctot;
+  Sobs[2] = Sobs[2] / ctot;
+  Sobs[3] = Sobs[3] / ctot;
+
+  ReflectionStatistics result = {sp, ctot, xbar, Sobs};
+  return result;
+}
+
+RefinerData::RefinerData(const dxtbx::model::Experiment &experiment,
+                         dials::af::reflection_table &reflections)
+    : s0(experiment.get_beam()->get_s0()),
+      sp_array(reflections.size()),
+      h_array(reflections["miller_index"]),
+      ctot_array(reflections.size()),
+      mobs_array(reflections.size()),
+      Sobs_array(reflections.size()),
+      panel_ids(reflections["panel"]) {
+  double s0_length = s0.length();
+  scitbx::af::const_ref<scitbx::vec3<double>> xyzobs = reflections["xyzobs.px.value"];
+  std::shared_ptr<dxtbx::model::Detector> detector = experiment.get_detector();
+  scitbx::af::shared<dials::af::Shoebox<>> sbox = reflections["shoebox"];
+  for (size_t i = 0; i < reflections.size(); ++i) {
+    size_t panel_id = panel_ids[i];
+    dxtbx::model::Panel &panel = (*detector)[panel_id];  // get panel obj
+    ReflectionStatistics result =
+      reflection_statistics(panel, xyzobs[i], s0_length, s0, sbox[i]);
+    sp_array[i] = result.sp;
+    ctot_array[i] = result.ctot;
+    mobs_array[i] = result.xbar;
+    Sobs_array[i] = result.Sobs;
+  }
+
+  // now need to dampen outliers in ctot list as these are used as weights - don't want
+  // an enormous intensity to dominate the refinement.
+  scitbx::af::shared<double> ctot_copy(ctot_array.begin(), ctot_array.end());
+  int n = ctot_array.size();
+  std::sort(ctot_copy.begin(), ctot_copy.end(), [](int a, int b) { return a < b; });
+  double Q1 = ctot_copy[n / 4];
+  double Q3 = ctot_copy[3 * n / 4];
+  assert(Q3 >= Q1);
+  double IQR = Q3 - Q1;
+  double T = Q3 + (1.5 * IQR);
+  for (size_t i = 0; i < n; ++i) {
+    if (ctot_array[i] > T) {
+      ctot_array[i] = T;
+    }
+  }
+};
+
+RefinerData::RefinerData(scitbx::vec3<double> s0_,
+                         scitbx::af::shared<scitbx::vec3<double>> sp_,
+                         scitbx::af::const_ref<cctbx::miller::index<>> h_,
+                         scitbx::af::shared<double> ctot_,
+                         scitbx::af::shared<scitbx::vec2<double>> mobs_,
+                         scitbx::af::shared<scitbx::mat2<double>> Sobs_,
+                         scitbx::af::shared<size_t> panel_ids_)
+    : s0(s0_),
+      sp_array(sp_),
+      h_array(h_),
+      ctot_array(ctot_),
+      mobs_array(mobs_),
+      Sobs_array(Sobs_),
+      panel_ids(panel_ids_) {}

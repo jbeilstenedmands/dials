@@ -1138,7 +1138,7 @@ class RefinerData(object):
         ctot_list = damp_outlier_intensity_weights(ctot_list)
 
         # Print the mean covariance
-        Smean = np.mean(Sobs_list, axis=2)
+        """Smean = np.mean(Sobs_list, axis=2)
         logger.info("")
         logger.info("Mean observed covariance:")
         logger.info(print_matrix_np(Smean))
@@ -1154,7 +1154,7 @@ class RefinerData(object):
         logger.info(
             "Variance in distance from Ewald sphere: %.3g"
             % mv.unweighted_sample_variance()
-        )
+        )"""
 
         # Return the profile refiner data
         return RefinerData(
