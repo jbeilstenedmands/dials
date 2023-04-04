@@ -6,7 +6,7 @@
 #include <dials/algorithms/profile_model/ellipsoid/refiner.h>
 #include <dials/array_family/reflection_table.h>
 #include <dxtbx/model/experiment.h>
-#include <tuple>
+
 /*
 scitbx::vec2<double> rse(
     const std::vector<double> &R,
@@ -282,7 +282,7 @@ RefinerData::RefinerData(const dxtbx::model::Experiment &experiment,
 
 RefinerData::RefinerData(scitbx::vec3<double> s0_,
                          scitbx::af::shared<scitbx::vec3<double>> sp_,
-                         scitbx::af::const_ref<cctbx::miller::index<>> h_,
+                         scitbx::af::shared<cctbx::miller::index<>> h_,
                          scitbx::af::shared<double> ctot_,
                          scitbx::af::shared<scitbx::vec2<double>> mobs_,
                          scitbx::af::shared<scitbx::mat2<double>> Sobs_,
@@ -294,3 +294,25 @@ RefinerData::RefinerData(scitbx::vec3<double> s0_,
       mobs_array(mobs_),
       Sobs_array(Sobs_),
       panel_ids(panel_ids_) {}
+
+scitbx::vec3<double> RefinerData::get_s0() {
+  return s0;
+}
+scitbx::af::shared<scitbx::vec3<double>> RefinerData::get_sp_array() {
+  return sp_array;
+}
+scitbx::af::shared<cctbx::miller::index<>> RefinerData::get_h_array() {
+  return h_array;
+}
+scitbx::af::shared<double> RefinerData::get_ctot_array() {
+  return ctot_array;
+}
+scitbx::af::shared<scitbx::vec2<double>> RefinerData::get_mobs_array() {
+  return mobs_array;
+}
+scitbx::af::shared<scitbx::mat2<double>> RefinerData::get_Sobs_array() {
+  return Sobs_array;
+}
+scitbx::af::shared<size_t> RefinerData::get_panel_ids() {
+  return panel_ids;
+}

@@ -83,16 +83,23 @@ public:
               dials::af::reflection_table &reflections);
   RefinerData(scitbx::vec3<double> s0,
               scitbx::af::shared<scitbx::vec3<double>> sp,
-              scitbx::af::const_ref<cctbx::miller::index<>> h,
+              scitbx::af::shared<cctbx::miller::index<>> h,
               scitbx::af::shared<double> ctot,
               scitbx::af::shared<scitbx::vec2<double>> mobs,
               scitbx::af::shared<scitbx::mat2<double>> Sobs,
               scitbx::af::shared<size_t> panel_ids);
+  scitbx::vec3<double> get_s0();
+  scitbx::af::shared<scitbx::vec3<double>> get_sp_array();
+  scitbx::af::shared<cctbx::miller::index<>> get_h_array();
+  scitbx::af::shared<double> get_ctot_array();
+  scitbx::af::shared<scitbx::vec2<double>> get_mobs_array();
+  scitbx::af::shared<scitbx::mat2<double>> get_Sobs_array();
+  scitbx::af::shared<size_t> get_panel_ids();
 
 private:
   scitbx::vec3<double> s0;
   scitbx::af::shared<scitbx::vec3<double>> sp_array;
-  scitbx::af::const_ref<cctbx::miller::index<>> h_array;
+  scitbx::af::shared<cctbx::miller::index<>> h_array;
   scitbx::af::shared<double> ctot_array;
   scitbx::af::shared<scitbx::vec2<double>> mobs_array;
   scitbx::af::shared<scitbx::mat2<double>> Sobs_array;
@@ -114,6 +121,13 @@ namespace dials { namespace algorithms { namespace boost_python {
     def("test_conditional", &test_conditional);
 
     class_<RefinerData>("RefinerData", no_init)
-      .def(init<const dxtbx::model::Experiment &, dials::af::reflection_table &>());
+      .def(init<const dxtbx::model::Experiment &, dials::af::reflection_table &>())
+      .def("get_s0", &RefinerData::get_s0)
+      .def("get_sp_array", &RefinerData::get_sp_array)
+      .def("get_h_array", &RefinerData::get_h_array)
+      .def("get_ctot_array", &RefinerData::get_ctot_array)
+      .def("get_mobs_array", &RefinerData::get_mobs_array)
+      .def("get_panel_ids", &RefinerData::get_panel_ids)
+      .def("get_Sobs_array", &RefinerData::get_Sobs_array);
   }
 }}}  // namespace dials::algorithms::boost_python

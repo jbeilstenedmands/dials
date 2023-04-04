@@ -35,3 +35,9 @@ env.SharedLibrary(
     source=["ellipsoid/refiner.cc"],
     LIBS=env["LIBS"],
 )
+
+env.SharedLibrary(
+    target="#/lib/dials_algorithms_profile_model_ellipsoid_parameterisation_ext",
+    source=["ellipsoid/parameterisation.cc"],
+    LIBS=env["LIBS"],
+)

@@ -26,7 +26,6 @@ from dials.algorithms.profile_model.ellipsoid import chisq_pdf
 from dials.algorithms.profile_model.ellipsoid.model import ProfileModelFactory
 from dials.algorithms.profile_model.ellipsoid.parameterisation import ModelState
 from dials.algorithms.profile_model.ellipsoid.refiner import Refiner as ProfileRefiner
-from dials.algorithms.profile_model.ellipsoid.refiner import RefinerData
 from dials.algorithms.profile_model.gaussian_rs import BBoxCalculator, MaskCalculator
 from dials.algorithms.profile_model.gaussian_rs.calculator import (
     ComputeEsdBeamDivergence,
@@ -34,6 +33,9 @@ from dials.algorithms.profile_model.gaussian_rs.calculator import (
 from dials.algorithms.spot_prediction import IndexGenerator
 from dials.array_family import flex
 from dials.constants import FULL_PARTIALITY
+
+# from dials.algorithms.profile_model.ellipsoid.refiner import RefinerData
+from dials_algorithms_profile_model_ellipsoid_refiner_ext import RefinerData
 
 logger = logging.getLogger("dials")
 
@@ -446,7 +448,7 @@ def run_ellipsoid_refinement(
         profile = experiments[0].crystal.mosaicity
 
     # Construct the profile refiner data
-    refiner_data = RefinerData.from_reflections(experiments[0], reflection_table)
+    refiner_data = RefinerData(experiments[0], reflection_table)
 
     # Do the refinement
     for _ in range(n_cycles):

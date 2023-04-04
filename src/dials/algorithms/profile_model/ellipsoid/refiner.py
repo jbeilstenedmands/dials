@@ -391,30 +391,41 @@ class ReflectionLikelihood(object):
 
 class MaximumLikelihoodTarget(object):
     def __init__(
-        self, model, s0, sp_list, h_list, ctot_list, mobs_list, sobs_list, panel_ids
+        self,
+        model,
+        refinerdata,
     ):
+        #    s0, sp_list, h_list, ctot_list, mobs_list, sobs_list, panel_ids
+        # ):
 
         # Check input
-        assert len(h_list) == sp_list.shape[-1]
+        """assert len(h_list) == sp_list.shape[-1]
         assert len(h_list) == ctot_list.shape[-1]
         assert len(h_list) == mobs_list.shape[-1]
-        assert len(h_list) == sobs_list.shape[-1]
+        assert len(h_list) == sobs_list.shape[-1]"""
 
         # Save the model
         self.model = model
 
         # Compute the change of basis for each reflection
         self.data = []
+        h_list = refinerdata.get_h_array()
+        s0 = refinerdata.get_s0()
+        sp_list = refinerdata.get_sp_array()
+        ctot_list = refinerdata.get_ctot_array()
+        mobs_list = refinerdata.get_mobs_array()
+        panel_ids = refinerdata.get_panel_ids()
+        sobs_list = refinerdata.get_Sobs_array()
         for i in range(len(h_list)):
             self.data.append(
                 ReflectionLikelihood(
                     model,
                     s0,
-                    sp_list[:, i],
+                    sp_list[i],
                     matrix.col(h_list[i]),
                     ctot_list[i],
-                    mobs_list[:, i],
-                    sobs_list[:, :, i],
+                    mobs_list[i],
+                    sobs_list[i],
                     panel_ids[i],
                 )
             )
@@ -678,13 +689,14 @@ class FisherScoringMaximumLikelihood(FisherScoringMaximumLikelihoodBase):
     def __init__(
         self,
         model,
-        s0,
-        sp_list,
-        h_list,
-        ctot_list,
-        mobs_list,
-        sobs_list,
-        panel_ids,
+        refinerdata,
+        # s0,
+        # sp_list,
+        # h_list,
+        # ctot_list,
+        # mobs_list,
+        # sobs_list,
+        # panel_ids,
         max_iter=1000,
         tolerance=1e-7,
     ):
@@ -699,29 +711,32 @@ class FisherScoringMaximumLikelihood(FisherScoringMaximumLikelihoodBase):
 
         # Save the parameterisation
         self.model = model
+        self.refinerdata = refinerdata
 
         # Save some stuff
-        self.s0 = s0
+        """self.s0 = s0
         self.sp_list = sp_list
         self.h_list = h_list
         self.ctot_list = ctot_list
         self.mobs_list = mobs_list
         self.sobs_list = sobs_list
-        self.panel_ids = panel_ids
+        self.panel_ids = panel_ids"""
 
         # Store the parameter history
         self.history = []
 
         self._ml_target = MaximumLikelihoodTarget(
             self.model,
-            self.s0,
+            self.refinerdata,
+        )
+        """    self.s0,
             self.sp_list,
             self.h_list,
             self.ctot_list,
             self.mobs_list,
             self.sobs_list,
             self.panel_ids,
-        )
+        )"""
 
         # Print initial
         self.callback(self.model.active_parameters)
@@ -894,13 +909,14 @@ class Refiner(object):
         Set the data and initial parameters
 
         """
-        self.s0 = data.s0
+        self.refinerdata = data
+        """self.s0 = data.s0
         self.h_list = data.h_list
         self.sp_list = data.sp_list
         self.ctot_list = data.ctot_list
         self.mobs_list = data.mobs_list
         self.sobs_list = data.sobs_list
-        self.panel_ids = data.panel_ids
+        self.panel_ids = data.panel_ids"""
         self.state = state
         self.history = []
 
@@ -929,14 +945,16 @@ class Refiner(object):
         # Initialise the algorithm
         self.ml = FisherScoringMaximumLikelihood(
             self.state,
-            self.s0,
+            self.refinerdata,
+        )
+        """    self.s0,
             self.sp_list,
             self.h_list,
             self.ctot_list,
             self.mobs_list,
             self.sobs_list,
             self.panel_ids,
-        )
+        )"""
 
         # Solve the maximum likelihood equations
         self.ml.solve()
