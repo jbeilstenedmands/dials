@@ -18,15 +18,19 @@ from dials.algorithms.profile_model.ellipsoid import (
     PredictorAngular,
     PredictorSimple,
 )
-from dials.algorithms.profile_model.ellipsoid.parameterisation import (
+from dials.algorithms.profile_model.ellipsoid.parameterisation import (  # Simple1MosaicityParameterisation,; Simple6MosaicityParameterisation,
     Angular2MosaicityParameterisation,
     Angular4MosaicityParameterisation,
-    Simple1MosaicityParameterisation,
-    Simple6MosaicityParameterisation,
 )
 from dials.array_family import flex
 from dials.constants import FULL_PARTIALITY
 from dials.model.experiment.profile import ProfileModelExt
+from dials_algorithms_profile_model_ellipsoid_parameterisation_ext import (
+    Simple1MosaicityParameterisation as Simple1MosaicityParameterisationCPP,
+)
+from dials_algorithms_profile_model_ellipsoid_parameterisation_ext import (
+    Simple6MosaicityParameterisation as Simple6MosaicityParameterisationCPP,
+)
 
 phil_scope = parse(
     """
@@ -343,7 +347,7 @@ class Simple1ProfileModel(SimpleProfileModelBase):
         Get the parameterisation
 
         """
-        return Simple1MosaicityParameterisation(self.params)
+        return Simple1MosaicityParameterisationCPP(self.params)
 
     @classmethod
     def from_sigma_d(Class, sigma_d):
@@ -392,7 +396,7 @@ class Simple6ProfileModel(SimpleProfileModelBase):
         Get the parameterisation
 
         """
-        return Simple6MosaicityParameterisation(self.params)
+        return Simple6MosaicityParameterisationCPP(self.params)
 
     @classmethod
     def from_sigma_d(Class, sigma_d):

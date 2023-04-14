@@ -57,7 +57,7 @@ inline scitbx::mat2<double> compute_dSbar(const scitbx::mat3<double> &S,
     dS[2] * S[6] / S[8], dS[2] * S[7] / S[8], dS[5] * S[6] / S[8], dS[5] * S[7] / S[8]};
   return A + B - (C + D);
 }
-
+ConditionalDistribution2::ConditionalDistribution2() {}
 ConditionalDistribution2::ConditionalDistribution2(
   double norm_s0_,
   scitbx::vec3<double> mu_,
@@ -123,22 +123,18 @@ void test_conditional(double norm_s0,
   scitbx::af::shared<scitbx::vec2<double>> dm = cond.first_derivatives_of_mean();
   scitbx::af::shared<scitbx::mat2<double>> dSs = cond.first_derivatives_of_sigma();
   scitbx::vec2<double> mean = cond.mean();
-  std::cout << 'mean' << std::endl;
   std::cout << mean[0] << std::endl;
   std::cout << mean[1] << std::endl;
   scitbx::mat2<double> sigma = cond.sigma();
-  std::cout << 'sigma' << std::endl;
   std::cout << sigma[0] << std::endl;
   std::cout << sigma[1] << std::endl;
   std::cout << sigma[2] << std::endl;
   std::cout << sigma[3] << std::endl;
-  std::cout << 'dmean' << std::endl;
   for (int i = 0; i < dm.size(); ++i) {
     for (int j = 0; j < 2; ++j) {
       std::cout << dm[i][j] << std::endl;
     }
   }
-  std::cout << 'dsigma' << std::endl;
   for (int i = 0; i < dSs.size(); ++i) {
     for (int j = 0; j < 4; ++j) {
       std::cout << dSs[i][j] << std::endl;
@@ -315,4 +311,86 @@ scitbx::af::shared<scitbx::mat2<double>> RefinerData::get_Sobs_array() {
 }
 scitbx::af::shared<size_t> RefinerData::get_panel_ids() {
   return panel_ids;
+}
+
+ReflectionLikelihood::ReflectionLikelihood(ModelState &model,
+                                           scitbx::vec3<double> s0,
+                                           scitbx::vec3<double> sp,
+                                           cctbx::miller::index<> h,
+                                           double ctot,
+                                           scitbx::vec2<double> mobs,
+                                           scitbx::mat2<double> sobs,
+                                           size_t panel_id)
+    : modelstate(ReflectionModelState(model, s0, h)),
+      s0(s0),
+      sp(sp),
+      h(h),
+      ctot(ctot),
+      mobs(mobs),
+      sobs(sobs),
+      panel_id(panel_id) {
+  norm_s0 = s0.length();
+  R = compute_change_of_basis_operation(s0, sp);
+  scitbx::vec3<double> s2 = s0 + modelstate.get_r();
+  mu = R * s2;
+  scitbx::mat3<double> RT = R.transpose();
+  S = (R * model.mosaicity_covariance_matrix()) * RT;
+  scitbx::af::shared<scitbx::mat3<double>> dS_dp = modelstate.get_dS_dp();
+  dS = {dS_dp.size(), {0, 0, 0, 0, 0, 0, 0, 0, 0}};
+  for (size_t i = 0; i < dS_dp.size(); ++i) {
+    dS[i] = (R * dS_dp[i]) * RT;
+  }
+  scitbx::af::shared<scitbx::vec3<double>> dr_dp = modelstate.get_dr_dp();
+  dmu = {dr_dp.size(), {0, 0, 0}};
+  for (size_t i = 0; i < dr_dp.size(); ++i) {
+    dmu[i] = R * dr_dp[i];
+  }
+  this->conditional = ConditionalDistribution2(norm_s0, mu, dmu, S, dS);
+}
+void ReflectionLikelihood::update() {
+  modelstate.update();
+  scitbx::vec3<double> s2 = s0 + modelstate.get_r();
+  mu = R * s2;
+  ModelState state = modelstate.get_state();
+  scitbx::mat3<double> RT = R.transpose();
+  if (!state.is_mosaic_spread_fixed()) {
+    S = (R * modelstate.mosaicity_covariance_matrix()) * RT;
+    scitbx::af::shared<scitbx::mat3<double>> dS_dp = modelstate.get_dS_dp();
+    for (size_t i = 0; i < dS_dp.size(); ++i) {
+      dS[i] = (R * dS_dp[i]) * RT;
+    }
+  }
+  if (!state.is_unit_cell_fixed() || !state.is_orientation_fixed()) {
+    scitbx::af::shared<scitbx::vec3<double>> dr_dp = modelstate.get_dr_dp();
+    for (size_t i = 0; i < dr_dp.size(); ++i) {
+      dmu[i] = R * dr_dp[i];
+    }
+  }
+  this->conditional = ConditionalDistribution2(norm_s0, mu, dmu, S, dS);
+}
+
+MLTarget::MLTarget(ModelState &model, RefinerData &refinerdata) : model(model) {
+  scitbx::af::shared<cctbx::miller::index<>> h_list = refinerdata.get_h_array();
+  scitbx::vec3<double> s0 = refinerdata.get_s0();
+  scitbx::af::shared<scitbx::vec3<double>> sp_list = refinerdata.get_sp_array();
+  scitbx::af::shared<double> ctot_list = refinerdata.get_ctot_array();
+  scitbx::af::shared<scitbx::vec2<double>> mobs_list = refinerdata.get_mobs_array();
+  scitbx::af::shared<size_t> panel_ids = refinerdata.get_panel_ids();
+  scitbx::af::shared<scitbx::mat2<double>> sobs_list = refinerdata.get_Sobs_array();
+  for (size_t i = 0; i < h_list.size(); ++i) {
+    data.push_back(ReflectionLikelihood(model,
+                                        s0,
+                                        sp_list[i],
+                                        h_list[i],
+                                        ctot_list[i],
+                                        mobs_list[i],
+                                        sobs_list[i],
+                                        panel_ids[i]));
+  }
+}
+
+void MLTarget::update() {
+  for (ReflectionLikelihood d : data) {
+    d.update();
+  }
 }

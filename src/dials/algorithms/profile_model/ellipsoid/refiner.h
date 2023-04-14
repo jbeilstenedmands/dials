@@ -7,6 +7,7 @@
 #include <dxtbx/model/panel.h>
 #include <dials/array_family/reflection_table.h>
 #include <dxtbx/model/experiment.h>
+#include <dials/algorithms/profile_model/ellipsoid/parameterisation.h>
 
 scitbx::vec2<double> rse(const std::vector<double> &R,
                          const std::vector<double> &mbar,
@@ -28,6 +29,7 @@ public:
                            scitbx::af::shared<scitbx::vec3<double>> dmu_,
                            scitbx::mat3<double> S_,
                            scitbx::af::shared<scitbx::mat3<double>> dS_);
+  ConditionalDistribution2();
   scitbx::vec2<double> mean();
   scitbx::mat2<double> sigma();
   scitbx::af::shared<scitbx::vec2<double>> first_derivatives_of_mean();
@@ -106,6 +108,49 @@ private:
   scitbx::af::shared<size_t> panel_ids;
 };
 
+class ReflectionLikelihood {
+public:
+  ReflectionLikelihood(ModelState &model,
+                       scitbx::vec3<double> s0,
+                       scitbx::vec3<double> sp,
+                       cctbx::miller::index<> h,
+                       double ctot,
+                       scitbx::vec2<double> mobs,
+                       scitbx::mat2<double> sobs,
+                       size_t panel_id);
+  void update();
+  /*double log_likelihood();
+  scitbx::vec3<double> first_derivatives();
+  scitbx::vec3<double> fisher_information();*/
+
+private:
+  ReflectionModelState modelstate;
+  scitbx::vec3<double> s0;
+  double norm_s0;
+  scitbx::vec3<double> sp;
+  cctbx::miller::index<> h;
+  double ctot;
+  scitbx::vec2<double> mobs;
+  scitbx::mat2<double> sobs;
+  size_t panel_id;
+  scitbx::mat3<double> R;
+  scitbx::mat3<double> S;
+  scitbx::af::shared<scitbx::mat3<double>> dS;
+  scitbx::vec3<double> mu;
+  scitbx::af::shared<scitbx::vec3<double>> dmu;
+  ConditionalDistribution2 conditional;
+};
+
+class MLTarget {
+public:
+  MLTarget(ModelState &model, RefinerData &refinerdata);
+  void update();
+
+private:
+  ModelState model;
+  std::vector<ReflectionLikelihood> data{};
+};
+
 using namespace boost::python;
 
 namespace dials { namespace algorithms { namespace boost_python {
@@ -129,5 +174,19 @@ namespace dials { namespace algorithms { namespace boost_python {
       .def("get_mobs_array", &RefinerData::get_mobs_array)
       .def("get_panel_ids", &RefinerData::get_panel_ids)
       .def("get_Sobs_array", &RefinerData::get_Sobs_array);
+
+    class_<ReflectionLikelihood>("ReflectionLikelihood", no_init)
+      .def(init<ModelState &,
+                scitbx::vec3<double>,
+                scitbx::vec3<double>,
+                cctbx::miller::index<>,
+                double,
+                scitbx::vec2<double>,
+                scitbx::mat2<double>,
+                size_t>());
+
+    class_<MLTarget>("MLTarget", no_init)
+      .def(init<ModelState &, RefinerData &>())
+      .def("update", &MLTarget::update);
   }
 }}}  // namespace dials::algorithms::boost_python

@@ -21,6 +21,7 @@ from dials.algorithms.profile_model.ellipsoid.parameterisation import (
 )
 from dials.array_family import flex
 from dials.util import tabulate
+from dials_algorithms_profile_model_ellipsoid_refiner_ext import MLTarget
 
 logger = logging.getLogger("dials")
 
@@ -586,6 +587,7 @@ class FisherScoringMaximumLikelihoodBase(object):
         :param tolerance: The parameter tolerance
 
         """
+        print(list(x0))
         self.x0 = matrix.col(x0)
         self.max_iter = max_iter
         self.tolerance = tolerance
@@ -706,7 +708,7 @@ class FisherScoringMaximumLikelihood(FisherScoringMaximumLikelihoodBase):
         """
         # Initialise the super class
         super(FisherScoringMaximumLikelihood, self).__init__(
-            model.active_parameters, max_iter=max_iter, tolerance=tolerance
+            model.active_parameters(), max_iter=max_iter, tolerance=tolerance
         )
 
         # Save the parameterisation
@@ -724,11 +726,12 @@ class FisherScoringMaximumLikelihood(FisherScoringMaximumLikelihoodBase):
 
         # Store the parameter history
         self.history = []
-
-        self._ml_target = MaximumLikelihoodTarget(
+        logger.info("here")
+        self._ml_target = MLTarget(
             self.model,
             self.refinerdata,
         )
+
         """    self.s0,
             self.sp_list,
             self.h_list,
@@ -739,7 +742,7 @@ class FisherScoringMaximumLikelihood(FisherScoringMaximumLikelihoodBase):
         )"""
 
         # Print initial
-        self.callback(self.model.active_parameters)
+        self.callback(self.model.active_parameters())
 
     def log_likelihood(self, x):
         """
@@ -828,6 +831,7 @@ class FisherScoringMaximumLikelihood(FisherScoringMaximumLikelihoodBase):
         """
         self.model.active_parameters = x
         self._ml_target.update()
+        logger.info("here")
         lnL = self._ml_target.log_likelihood()
         mse = self._ml_target.mse()
         rmsd = self._ml_target.rmsd()
@@ -935,11 +939,13 @@ class Refiner(object):
 
         # Print information
         logger.info("\nComponents to refine:")
-        logger.info(" Orientation:       %s" % (not self.state.is_orientation_fixed))
-        logger.info(" Unit cell:         %s" % (not self.state.is_unit_cell_fixed))
-        logger.info(" RLP mosaicity:     %s" % (not self.state.is_mosaic_spread_fixed))
+        logger.info(" Orientation:       %s" % (not self.state.is_orientation_fixed()))
+        logger.info(" Unit cell:         %s" % (not self.state.is_unit_cell_fixed()))
         logger.info(
-            " Wavelength spread: %s\n" % (not self.state.is_wavelength_spread_fixed)
+            " RLP mosaicity:     %s" % (not self.state.is_mosaic_spread_fixed())
+        )
+        logger.info(
+            " Wavelength spread: %s\n" % (not self.state.is_wavelength_spread_fixed())
         )
 
         # Initialise the algorithm

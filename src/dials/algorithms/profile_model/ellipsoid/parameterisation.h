@@ -22,6 +22,9 @@ public:
   scitbx::af::shared<double> get_params();
   int num_parameters();
   void set_params(scitbx::af::shared<double> parameters);
+  bool is_angular();
+  scitbx::mat3<double> sigma();
+  scitbx::af::shared<scitbx::mat3<double>> first_derivatives();
 
 private:
   scitbx::af::shared<double> parameters;
@@ -30,11 +33,32 @@ private:
 class Simple1MosaicityParameterisation : public BaseParameterisation {
 public:
   Simple1MosaicityParameterisation(scitbx::af::shared<double> parameters);
-  bool is_angular();
   int num_parameters();
   scitbx::mat3<double> sigma();
   scitbx::af::shared<scitbx::mat3<double>> first_derivatives();
   std::map<std::string, double> mosaicity();
+};
+
+class Simple6MosaicityParameterisation : public BaseParameterisation {
+public:
+  Simple6MosaicityParameterisation(scitbx::af::shared<double> parameters);
+  int num_parameters();
+  scitbx::mat3<double> sigma();
+  scitbx::af::shared<scitbx::mat3<double>> first_derivatives();
+  std::map<std::string, double> mosaicity();
+};
+
+class WavelengthSpreadParameterisation {
+public:
+  WavelengthSpreadParameterisation(double parameter);
+  int num_parameters();
+  double sigma();
+  double first_derivative();
+  double get_param();
+  void set_param(double p);
+
+private:
+  double parameter_;
 };
 
 class SimpleUParameterisation {
@@ -73,46 +97,112 @@ private:
 class SimpleCellParameterisation {
 public:
   SimpleCellParameterisation(const dxtbx::model::Crystal &crystal);
-  scitbx::af::small<double, 6> get_params();
-  void set_params(scitbx::af::small<double, 6>);
+  scitbx::af::shared<double> get_params();
+  void set_params(scitbx::af::shared<double>);
   scitbx::mat3<double> get_state();
   scitbx::af::shared<scitbx::mat3<double>> get_dS_dp();
 
 private:
-  scitbx::af::small<double, 6> params;
+  scitbx::af::shared<double> params;
   void compose();
   scitbx::mat3<double> B_;
   scitbx::af::shared<scitbx::mat3<double>> dS_dp;
   SymmetrizeReduceEnlarge SRE;
 };
 
-/*class ModelState {
+class ModelState {
 public:
-  ModelState(dxtbx::model::Crystal &crystal,
-             BaseParameterisation parameterisation,
+  ModelState(const dxtbx::model::Crystal &crystal,
+             BaseParameterisation &m_parameterisation,
+             WavelengthSpreadParameterisation &l_parameterisation,
              bool fix_orientation,
-             bool fix_unit_cell
+             bool fix_unit_cell,
              bool fix_wavelength_spread,
              bool fix_mosaic_spread);
+  bool is_orientation_fixed();
+  bool is_unit_cell_fixed();
+  bool is_mosaic_spread_fixed();
+  bool is_mosaic_spread_angular();
+  bool is_wavelength_spread_fixed();
+  scitbx::mat3<double> U_matrix();
+  scitbx::mat3<double> B_matrix();
+  scitbx::mat3<double> A_matrix();
+  scitbx::mat3<double> mosaicity_covariance_matrix();
+  double wavelength_spread();
+  scitbx::af::shared<double> U_params();
+  void set_U_params(scitbx::af::shared<double> p);
+  scitbx::af::shared<double> B_params();
+  void set_B_params(scitbx::af::shared<double> p);
+  scitbx::af::shared<double> M_params();
+  void set_M_params(scitbx::af::shared<double> p);
+  double L_param();
+  void set_L_param(double p);
+  scitbx::af::shared<scitbx::mat3<double>> dU_dp();
+  scitbx::af::shared<scitbx::mat3<double>> dB_dp();
+  scitbx::af::shared<scitbx::mat3<double>> dM_dp();
+  double dL_dp();
+  scitbx::af::shared<double> active_parameters();
+  void set_active_parameters(scitbx::af::shared<double> parameters);
+  std::vector<std::string> parameter_labels();
 
 private:
-  dxtbx::model::Crystal crystal;
-  BaseParameterisation parameterisation;
+  BaseParameterisation M_parameterisation;
+  WavelengthSpreadParameterisation L_parameterisation;
+  SimpleCellParameterisation B_parameterisation;
+  SimpleUParameterisation U_parameterisation;
   bool fix_orientation;
   bool fix_unit_cell;
   bool fix_wavelength_spread;
   bool fix_mosaic_spread;
-};*/
+};
+
+class ReflectionModelState {
+public:
+  ReflectionModelState(ModelState &state,
+                       scitbx::vec3<double> s0,
+                       cctbx::miller::index<> h);
+  void update();
+  scitbx::mat3<double> mosaicity_covariance_matrix();
+  scitbx::vec3<double> get_r();
+  ModelState get_state();
+  scitbx::af::shared<scitbx::mat3<double>> get_dS_dp();
+  scitbx::af::shared<scitbx::vec3<double>> get_dr_dp();
+  scitbx::af::shared<double> get_dL_dp();
+
+private:
+  scitbx::vec3<double> s0_;
+  scitbx::vec3<double> r;
+  cctbx::miller::index<> h_;
+  scitbx::vec3<double> norm_s0;
+  ModelState state_;
+  scitbx::mat3<double> Q{0, 0, 0, 0, 0, 0, 0, 0, 0};
+  scitbx::mat3<double> sigma{0, 0, 0, 0, 0, 0, 0, 0, 0};
+  double sigma_lambda{0};
+  scitbx::af::shared<scitbx::vec3<double>> dr_dp;
+  scitbx::af::shared<scitbx::mat3<double>> ds_dp;
+  scitbx::af::shared<double> dl_dp;
+  void recalc_sigma();
+  void recalc_sigma_lambda();
+};
 
 using namespace boost::python;
 
 namespace dials { namespace algorithms { namespace boost_python {
 
   BOOST_PYTHON_MODULE(dials_algorithms_profile_model_ellipsoid_parameterisation_ext) {
-    class_<Simple1MosaicityParameterisation>("Simple1MosaicityParameterisation",
-                                             no_init)
+    class_<BaseParameterisation, boost::noncopyable>("BaseParameterisation", no_init);
+    class_<Simple1MosaicityParameterisation, bases<BaseParameterisation>>(
+      "Simple1MosaicityParameterisation", no_init)
       .def(init<scitbx::af::shared<double>>())
       .def("get_params", &Simple1MosaicityParameterisation::get_params);
+    class_<Simple6MosaicityParameterisation, bases<BaseParameterisation>>(
+      "Simple6MosaicityParameterisation", no_init)
+      .def(init<scitbx::af::shared<double>>())
+      .def("get_params", &Simple6MosaicityParameterisation::get_params);
+    class_<WavelengthSpreadParameterisation>("WavelengthSpreadParameterisation",
+                                             no_init)
+      .def(init<double>())
+      .def("get_param", &WavelengthSpreadParameterisation::get_param);
 
     class_<SimpleUParameterisation>("SimpleUParameterisation", no_init)
       .def(init<dxtbx::model::Crystal>())
@@ -127,5 +217,33 @@ namespace dials { namespace algorithms { namespace boost_python {
       .def("set_params", &SimpleCellParameterisation::set_params)
       .def("get_state", &SimpleCellParameterisation::get_state)
       .def("get_dS_dp", &SimpleCellParameterisation::get_dS_dp);
+
+    class_<ModelState>("ModelState", no_init)
+      .def(init<dxtbx::model::Crystal,
+                BaseParameterisation &,
+                WavelengthSpreadParameterisation &,
+                bool,
+                bool,
+                bool,
+                bool>())
+      .def("is_orientation_fixed", &ModelState::is_orientation_fixed)
+      .def("is_unit_cell_fixed", &ModelState::is_unit_cell_fixed)
+      .def("is_mosaic_spread_fixed", &ModelState::is_mosaic_spread_fixed)
+      .def("is_mosaic_spread_angular", &ModelState::is_mosaic_spread_angular)
+      .def("is_wavelength_spread_fixed", &ModelState::is_wavelength_spread_fixed)
+      .def("U_matrix", &ModelState::U_matrix)
+      .def("B_matrix()", &ModelState::B_matrix)
+      .def("A_matrix()", &ModelState::A_matrix)
+      .def("active_parameters", &ModelState::active_parameters);
+
+    class_<ReflectionModelState>("ReflectionModelState", no_init)
+      .def(init<ModelState &, scitbx::vec3<double>, cctbx::miller::index<>>())
+      .def("update", &ReflectionModelState::update)
+      .def("mosaicity_covariance_matrix",
+           &ReflectionModelState::mosaicity_covariance_matrix)
+      .def("get_r", &ReflectionModelState::get_r)
+      .def("get_dS_dp", &ReflectionModelState::get_dS_dp)
+      .def("get_dr_dp", &ReflectionModelState::get_dr_dp)
+      .def("get_dL_dp", &ReflectionModelState::get_dL_dp);
   }
 }}}  // namespace dials::algorithms::boost_python

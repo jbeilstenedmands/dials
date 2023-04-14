@@ -24,7 +24,8 @@ from scitbx import matrix
 
 from dials.algorithms.profile_model.ellipsoid import chisq_pdf
 from dials.algorithms.profile_model.ellipsoid.model import ProfileModelFactory
-from dials.algorithms.profile_model.ellipsoid.parameterisation import ModelState
+
+# from dials.algorithms.profile_model.ellipsoid.parameterisation import ModelState
 from dials.algorithms.profile_model.ellipsoid.refiner import Refiner as ProfileRefiner
 from dials.algorithms.profile_model.gaussian_rs import BBoxCalculator, MaskCalculator
 from dials.algorithms.profile_model.gaussian_rs.calculator import (
@@ -33,6 +34,10 @@ from dials.algorithms.profile_model.gaussian_rs.calculator import (
 from dials.algorithms.spot_prediction import IndexGenerator
 from dials.array_family import flex
 from dials.constants import FULL_PARTIALITY
+from dials_algorithms_profile_model_ellipsoid_parameterisation_ext import (
+    ModelState,
+    WavelengthSpreadParameterisation,
+)
 
 # from dials.algorithms.profile_model.ellipsoid.refiner import RefinerData
 from dials_algorithms_profile_model_ellipsoid_refiner_ext import RefinerData
@@ -302,12 +307,15 @@ def refine_profile(experiment, profile, refiner_data, wavelength_spread_model="d
     logger.info("\n" + "=" * 80 + "\nRefining profile parmameters")
 
     # Create the parameterisation
+    wl = WavelengthSpreadParameterisation(0.0)
     state = ModelState(
-        experiment,
+        experiment.crystal,
         profile.parameterisation.parameterisation(),
-        fix_orientation=True,
-        fix_unit_cell=True,
-        fix_wavelength_spread=wavelength_spread_model == "delta",
+        wl,
+        True,
+        True,
+        True,
+        False,
     )
 
     # Create the refiner and refine
