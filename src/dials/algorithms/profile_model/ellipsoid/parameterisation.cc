@@ -53,9 +53,6 @@ scitbx::af::shared<scitbx::mat3<double>> BaseParameterisation::first_derivatives
   scitbx::af::shared<scitbx::mat3<double>> derivatives;
   return derivatives;
 }
-scitbx::mat3<double> BaseParameterisation::sigma() {
-  return scitbx::mat3<double>(0, 0, 0, 0, 0, 0, 0, 0, 0);
-}
 
 Simple1MosaicityParameterisation::Simple1MosaicityParameterisation(
   scitbx::af::shared<double> parameters_)
@@ -66,9 +63,10 @@ int Simple1MosaicityParameterisation::num_parameters() {
 }
 scitbx::mat3<double> Simple6MosaicityParameterisation::sigma() {
   scitbx::af::shared<double> params = this->get_params();
-  scitbx::mat3<double> M(
-    params[0], 0, 0, params[1], params[2], 0, params[3], params[4], params[5]);
-  return M * M.transpose();
+  scitbx::mat3<double> M {
+    params[0], 0, 0, params[1], params[2], 0, params[3], params[4], params[5]};
+  scitbx::mat3<double> MMT = M * M.transpose();
+  return MMT;
 }
 scitbx::af::shared<scitbx::mat3<double>>
 Simple6MosaicityParameterisation::first_derivatives() {
@@ -90,8 +88,18 @@ std::map<std::string, double> Simple6MosaicityParameterisation::mosaicity() {
 }
 
 Simple6MosaicityParameterisation::Simple6MosaicityParameterisation(
-  scitbx::af::shared<double> parameters_)
-    : BaseParameterisation(parameters_) {}
+  scitbx::af::shared<double> parameters)
+    : parameters_(parameters) {}
+
+void Simple6MosaicityParameterisation::set_params(scitbx::af::shared<double> parameters) {
+  parameters_ = parameters;
+}
+scitbx::af::shared<double> Simple6MosaicityParameterisation::get_params() {
+  return parameters_;
+}
+bool Simple6MosaicityParameterisation::is_angular() {
+  return false;
+}
 
 int Simple6MosaicityParameterisation::num_parameters() {
   return 6;
@@ -212,7 +220,7 @@ scitbx::af::shared<scitbx::mat3<double>> SimpleCellParameterisation::get_dS_dp()
 }
 
 ModelState::ModelState(const dxtbx::model::Crystal &crystal,
-                       BaseParameterisation &m_parameterisation,
+                       Simple6MosaicityParameterisation &m_parameterisation,
                        WavelengthSpreadParameterisation &l_parameterisation,
                        bool fix_orientation,
                        bool fix_unit_cell,
@@ -225,7 +233,28 @@ ModelState::ModelState(const dxtbx::model::Crystal &crystal,
       fix_orientation(fix_orientation),
       fix_unit_cell(fix_unit_cell),
       fix_wavelength_spread(fix_wavelength_spread),
-      fix_mosaic_spread(fix_mosaic_spread) {}
+      fix_mosaic_spread(fix_mosaic_spread),
+      n_active_params(0) {
+        if (!fix_orientation) {
+          scitbx::af::shared<double> p = U_parameterisation.get_params();
+          n_active_params += p.size();
+        }
+        if (!fix_unit_cell) {
+          scitbx::af::shared<double> p = B_parameterisation.get_params();
+          n_active_params += p.size();
+        }
+        if (!fix_mosaic_spread) {
+          scitbx::af::shared<double> p = M_parameterisation.get_params();
+          n_active_params += p.size();
+        }
+        if (!fix_wavelength_spread) {
+          n_active_params += 1;
+        }
+      }
+
+int ModelState::n_active_parameters(){
+  return n_active_params;
+}
 
 scitbx::mat3<double> ModelState::mosaicity_covariance_matrix() {
   return M_parameterisation.sigma();
@@ -297,7 +326,7 @@ double ModelState::dL_dp() {
   return L_parameterisation.first_derivative();
 }
 scitbx::af::shared<double> ModelState::active_parameters() {
-  scitbx::af::shared<double> active_params;
+  scitbx::af::shared<double> active_params = {};
   if (!fix_orientation) {
     scitbx::af::shared<double> p = U_parameterisation.get_params();
     for (size_t i = 0; i < p.size(); ++i) {
@@ -373,9 +402,9 @@ ReflectionModelState::ReflectionModelState(ModelState &state,
   if (!state_.is_wavelength_spread_fixed()) {
     n_params += 1;
   }
-  dr_dp = {n_params, {0, 0, 0}};
-  ds_dp = {n_params, {0, 0, 0, 0, 0, 0, 0, 0, 0}};
-  dl_dp = {n_params, 0};
+  dr_dp.resize(n_params, {0,0,0});
+  ds_dp.resize(n_params, {0, 0, 0, 0, 0, 0, 0, 0, 0});
+  dl_dp.resize(n_params, 0);
   if (state_.is_mosaic_spread_angular()) {
     scitbx::vec3<double> norm_r = r.normalize();
     scitbx::vec3<double> q1(norm_r.cross(norm_s0).normalize());

@@ -9,6 +9,8 @@
 #include <dxtbx/model/experiment.h>
 #include <dials/algorithms/profile_model/ellipsoid/parameterisation.h>
 
+using dxtbx::model::Detector;
+
 scitbx::vec2<double> rse(const std::vector<double> &R,
                          const std::vector<double> &mbar,
                          const std::vector<double> &xobs,
@@ -36,13 +38,13 @@ public:
   scitbx::af::shared<scitbx::mat2<double>> first_derivatives_of_sigma();
 
 private:
-  scitbx::vec3<double> mu;
-  scitbx::af::shared<scitbx::vec3<double>> dmu;
-  scitbx::mat3<double> S;
-  scitbx::af::shared<scitbx::mat3<double>> dS;
-  double epsilon;
-  scitbx::vec2<double> mubar;
-  scitbx::mat2<double> Sbar;
+  scitbx::vec3<double> mu{};
+  scitbx::af::shared<scitbx::vec3<double>> dmu{};
+  scitbx::mat3<double> S{};
+  scitbx::af::shared<scitbx::mat3<double>> dS{};
+  double epsilon{};
+  scitbx::vec2<double> mubar{};
+  scitbx::mat2<double> Sbar{};
   scitbx::af::shared<scitbx::mat2<double>> dSbar{};
   scitbx::af::shared<scitbx::vec2<double>> dmbar{};
 };
@@ -84,6 +86,7 @@ public:
   RefinerData(const dxtbx::model::Experiment &experiment,
               dials::af::reflection_table &reflections);
   RefinerData(scitbx::vec3<double> s0,
+              Detector& detector,
               scitbx::af::shared<scitbx::vec3<double>> sp,
               scitbx::af::shared<cctbx::miller::index<>> h,
               scitbx::af::shared<double> ctot,
@@ -97,6 +100,7 @@ public:
   scitbx::af::shared<scitbx::vec2<double>> get_mobs_array();
   scitbx::af::shared<scitbx::mat2<double>> get_Sobs_array();
   scitbx::af::shared<size_t> get_panel_ids();
+  Detector& get_detector();
 
 private:
   scitbx::vec3<double> s0;
@@ -106,11 +110,13 @@ private:
   scitbx::af::shared<scitbx::vec2<double>> mobs_array;
   scitbx::af::shared<scitbx::mat2<double>> Sobs_array;
   scitbx::af::shared<size_t> panel_ids;
+  Detector& detector;
 };
 
 class ReflectionLikelihood {
 public:
   ReflectionLikelihood(ModelState &model,
+                       Detector &detector,
                        scitbx::vec3<double> s0,
                        scitbx::vec3<double> sp,
                        cctbx::miller::index<> h,
@@ -119,12 +125,15 @@ public:
                        scitbx::mat2<double> sobs,
                        size_t panel_id);
   void update();
-  /*double log_likelihood();
-  scitbx::vec3<double> first_derivatives();
-  scitbx::vec3<double> fisher_information();*/
+  double log_likelihood();
+  double square_error();
+  scitbx::vec2<double> rse();
+  scitbx::af::shared<double> first_derivatives();
+  scitbx::af::versa<double, scitbx::af::c_grid<2>> fisher_information();
 
 private:
   ReflectionModelState modelstate;
+  Detector &detector;
   scitbx::vec3<double> s0;
   double norm_s0;
   scitbx::vec3<double> sp;
@@ -133,21 +142,26 @@ private:
   scitbx::vec2<double> mobs;
   scitbx::mat2<double> sobs;
   size_t panel_id;
-  scitbx::mat3<double> R;
-  scitbx::mat3<double> S;
-  scitbx::af::shared<scitbx::mat3<double>> dS;
-  scitbx::vec3<double> mu;
-  scitbx::af::shared<scitbx::vec3<double>> dmu;
+  scitbx::mat3<double> R {};
+  scitbx::mat3<double> S {};
+  scitbx::af::shared<scitbx::mat3<double>> dS {};
+  scitbx::vec3<double> mu {};
+  scitbx::af::shared<scitbx::vec3<double>> dmu {};
   ConditionalDistribution2 conditional;
 };
 
 class MLTarget {
 public:
-  MLTarget(ModelState &model, RefinerData &refinerdata);
+  MLTarget(ModelState &model_, RefinerData &refinerdata);
   void update();
+  double log_likelihood();
+  scitbx::vec2<double> rmsd();
+  double mse();
+  scitbx::af::shared<double> first_derivatives();
+  scitbx::af::versa<double, scitbx::af::c_grid<2>> fisher_information();
 
 private:
-  ModelState model;
+  ModelState &model;
   std::vector<ReflectionLikelihood> data{};
 };
 
@@ -177,6 +191,7 @@ namespace dials { namespace algorithms { namespace boost_python {
 
     class_<ReflectionLikelihood>("ReflectionLikelihood", no_init)
       .def(init<ModelState &,
+                Detector&,
                 scitbx::vec3<double>,
                 scitbx::vec3<double>,
                 cctbx::miller::index<>,
@@ -187,6 +202,11 @@ namespace dials { namespace algorithms { namespace boost_python {
 
     class_<MLTarget>("MLTarget", no_init)
       .def(init<ModelState &, RefinerData &>())
-      .def("update", &MLTarget::update);
+      .def("update", &MLTarget::update)
+      .def("log_likelihood", &MLTarget::log_likelihood)
+      .def("mse", &MLTarget::mse)
+      .def("rmsd", &MLTarget::rmsd)
+      .def("first_derivatives", &MLTarget::first_derivatives)
+      .def("fisher_information", &MLTarget::fisher_information);
   }
 }}}  // namespace dials::algorithms::boost_python

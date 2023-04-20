@@ -587,8 +587,8 @@ class FisherScoringMaximumLikelihoodBase(object):
         :param tolerance: The parameter tolerance
 
         """
-        print(list(x0))
         self.x0 = matrix.col(x0)
+        print(self.x0)
         self.max_iter = max_iter
         self.tolerance = tolerance
 
@@ -602,8 +602,9 @@ class FisherScoringMaximumLikelihoodBase(object):
         # Loop through the maximum number of iterations
         for it in range(self.max_iter):
             # Compute the derivative and fisher information at x0
+            print(x0)
             S, I = self.score_and_fisher_information(x0)
-
+            print(x0)
             # Solve the update equation to get direction
             p = matrix.col(self.solve_update_equation(S, I))
 
@@ -612,7 +613,11 @@ class FisherScoringMaximumLikelihoodBase(object):
             # increase in the likelihood (only observed for absurdly small samples
             # e.g. 2 reflections or when 1 parameter approaches zero) do an iteration
             # of gradient descent
+            print(x0)
             delta = self.line_search(x0, p)
+            print(x0)
+            print("in it")
+            print(delta)
             if delta > 0:
                 x = x0 + delta * p
             else:
@@ -630,6 +635,7 @@ class FisherScoringMaximumLikelihoodBase(object):
         # Save the parameters
         self.num_iter = it + 1
         self.parameters = x
+        #print(list(self.parameters))
 
     def solve_update_equation(self, S, I):
         """
@@ -648,8 +654,7 @@ class FisherScoringMaximumLikelihoodBase(object):
 
         # Perform the decomposition
         ll = linalg.l_l_transpose_cholesky_decomposition_in_place(LL)
-        p = flex.double(S)
-        return ll.solve(p)
+        return ll.solve(S)
 
     def line_search(self, x, p, tau=0.5, delta=1.0, tolerance=1e-7):
         """
@@ -707,8 +712,9 @@ class FisherScoringMaximumLikelihood(FisherScoringMaximumLikelihoodBase):
 
         """
         # Initialise the super class
+        params = model.active_parameters()
         super(FisherScoringMaximumLikelihood, self).__init__(
-            model.active_parameters(), max_iter=max_iter, tolerance=tolerance
+            params, max_iter=max_iter, tolerance=tolerance
         )
 
         # Save the parameterisation
@@ -750,7 +756,7 @@ class FisherScoringMaximumLikelihood(FisherScoringMaximumLikelihoodBase):
         :return: The log likelihood at x
 
         """
-        self.model.active_parameters = x
+        self.model.set_active_parameters(x)
         self._ml_target.update()
         return self._ml_target.log_likelihood()
 
@@ -760,9 +766,9 @@ class FisherScoringMaximumLikelihood(FisherScoringMaximumLikelihoodBase):
         :return: The score at x
 
         """
-        self.model.active_parameters = x
+        self.model.set_active_parameters(x)
         self._ml_target.update()
-        return flumpy.from_numpy(self._ml_target.first_derivatives())
+        return self._ml_target.first_derivatives()
 
     def score_and_fisher_information(self, x):
         """
@@ -770,9 +776,10 @@ class FisherScoringMaximumLikelihood(FisherScoringMaximumLikelihoodBase):
         :return: The score and fisher information at x
 
         """
-        self.model.active_parameters = x
+        self.model.set_active_parameters(x)
         self._ml_target.update()
-        S = flumpy.from_numpy(self._ml_target.first_derivatives())
+        S = self._ml_target.first_derivatives()
+        assert 0
         I = self._ml_target.fisher_information()
         return S, I
 
@@ -829,19 +836,24 @@ class FisherScoringMaximumLikelihood(FisherScoringMaximumLikelihoodBase):
         Handle and update in parameter values
 
         """
-        self.model.active_parameters = x
+        print("about to set active")
+        self.model.set_active_parameters(x)
         self._ml_target.update()
         logger.info("here")
         lnL = self._ml_target.log_likelihood()
+        print(lnL)
         mse = self._ml_target.mse()
+        print(sqrt(mse))
         rmsd = self._ml_target.rmsd()
+        print(rmsd)
+        print("done callback")
 
         # Get the unit cell
-        unit_cell = self.model.unit_cell.parameters()
+        #unit_cell = self.model.unit_cell.parameters()
 
         # Get some matrices
-        U = self.model.U_matrix.flatten()
-        M = self.model.mosaicity_covariance_matrix.flatten()
+        U = list(self.model.U_matrix())#.flatten()
+        M = list(self.model.mosaicity_covariance_matrix())#.flatten()
 
         # Print some information
         format_string1 = "  Unit cell: (%.3f, %.3f, %.3f, %.3f, %.3f, %.3f)"
@@ -849,9 +861,9 @@ class FisherScoringMaximumLikelihood(FisherScoringMaximumLikelihoodBase):
         format_string3 = "  | % .2e % .2e % .2e |"
 
         logger.info(f"\nIteration: {len(self.history)}")
-        if not self.model.is_unit_cell_fixed:
-            logger.info("\n" + format_string1 % unit_cell)
-        if not self.model.is_orientation_fixed:
+        #if not self.model.is_unit_cell_fixed:
+        #    logger.info("\n" + format_string1 % unit_cell)
+        if not self.model.is_orientation_fixed():
             logger.info(
                 "\n".join(
                     [
@@ -863,7 +875,7 @@ class FisherScoringMaximumLikelihood(FisherScoringMaximumLikelihoodBase):
                     ]
                 )
             )
-        if not self.model.is_mosaic_spread_fixed:
+        if not self.model.is_mosaic_spread_fixed():
             logger.info(
                 "\n".join(
                     [
@@ -894,7 +906,7 @@ class FisherScoringMaximumLikelihood(FisherScoringMaximumLikelihoodBase):
             {
                 "parameters": list(x),
                 "likelihood": lnL,
-                "unit_cell": unit_cell,
+                #"unit_cell": unit_cell,
                 "orientation": list(U),
                 "rlp_mosaicity": list(M),
                 "rmsd": tuple(rmsd),

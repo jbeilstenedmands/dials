@@ -396,7 +396,9 @@ class Simple6ProfileModel(SimpleProfileModelBase):
         Get the parameterisation
 
         """
-        return Simple6MosaicityParameterisationCPP(self.params)
+        from dxtbx import flumpy
+        self.testparameterisation = Simple6MosaicityParameterisationCPP(flumpy.from_numpy(self.params))
+        return self.testparameterisation
 
     @classmethod
     def from_sigma_d(Class, sigma_d):
@@ -405,7 +407,7 @@ class Simple6ProfileModel(SimpleProfileModelBase):
 
         """
         return Class.from_params(
-            np.array([sigma_d, 0, sigma_d, 0, 0, sigma_d], dtype=np.float64)
+            flex.double([sigma_d, 0, sigma_d, 0, 0, sigma_d])
         )
 
     @classmethod

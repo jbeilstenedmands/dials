@@ -6,7 +6,7 @@
 #include <dials/algorithms/profile_model/ellipsoid/refiner.h>
 #include <dials/array_family/reflection_table.h>
 #include <dxtbx/model/experiment.h>
-
+using dxtbx::model::Detector;
 /*
 scitbx::vec2<double> rse(
     const std::vector<double> &R,
@@ -65,18 +65,18 @@ ConditionalDistribution2::ConditionalDistribution2(
   scitbx::mat3<double> S_,
   scitbx::af::shared<scitbx::mat3<double>> dS_)
     : mu(mu_), dmu(dmu_), S(S_), dS(dS_) {
-  scitbx::mat2<double> S11(S[0], S[1], S[3], S[4]);
-  scitbx::vec2<double> S12(S[2], S[5]);
-  scitbx::vec2<double> S21(S[6], S[7]);
-  scitbx::vec2<double> mu1(mu[0], mu[1]);
+  scitbx::mat2<double> S11 {S[0], S[1], S[3], S[4]};
+  scitbx::vec2<double> S12 {S[2], S[5]};
+  scitbx::vec2<double> S21 {S[6], S[7]};
+  scitbx::vec2<double> mu1 {mu[0], mu[1]};
 
   epsilon = norm_s0_ - mu[2];
   mubar = mu1 + (S12 * (1.0 / S[8]) * epsilon);
 
-  scitbx::mat2<double> outerprodS12S21(S12[0] * S21[0] / S[8],
+  scitbx::mat2<double> outerprodS12S21 {S12[0] * S21[0] / S[8],
                                        S12[0] * S21[1] / S[8],
                                        S12[1] * S21[0] / S[8],
-                                       S12[1] * S21[1] / S[8]);
+                                       S12[1] * S21[1] / S[8]};
   Sbar = S11 - outerprodS12S21;
 }
 
@@ -243,14 +243,15 @@ RefinerData::RefinerData(const dxtbx::model::Experiment &experiment,
       ctot_array(reflections.size()),
       mobs_array(reflections.size()),
       Sobs_array(reflections.size()),
-      panel_ids(reflections["panel"]) {
+      panel_ids(reflections["panel"]),
+      detector(*experiment.get_detector()) {
   double s0_length = s0.length();
   scitbx::af::const_ref<scitbx::vec3<double>> xyzobs = reflections["xyzobs.px.value"];
-  std::shared_ptr<dxtbx::model::Detector> detector = experiment.get_detector();
+  //std::shared_ptr<dxtbx::model::Detector> detector = experiment.get_detector();
   scitbx::af::shared<dials::af::Shoebox<>> sbox = reflections["shoebox"];
   for (size_t i = 0; i < reflections.size(); ++i) {
     size_t panel_id = panel_ids[i];
-    dxtbx::model::Panel &panel = (*detector)[panel_id];  // get panel obj
+    dxtbx::model::Panel &panel = (detector)[panel_id];  // get panel obj
     ReflectionStatistics result =
       reflection_statistics(panel, xyzobs[i], s0_length, s0, sbox[i]);
     sp_array[i] = result.sp;
@@ -277,6 +278,7 @@ RefinerData::RefinerData(const dxtbx::model::Experiment &experiment,
 };
 
 RefinerData::RefinerData(scitbx::vec3<double> s0_,
+                         Detector& detector_,
                          scitbx::af::shared<scitbx::vec3<double>> sp_,
                          scitbx::af::shared<cctbx::miller::index<>> h_,
                          scitbx::af::shared<double> ctot_,
@@ -289,7 +291,8 @@ RefinerData::RefinerData(scitbx::vec3<double> s0_,
       ctot_array(ctot_),
       mobs_array(mobs_),
       Sobs_array(Sobs_),
-      panel_ids(panel_ids_) {}
+      panel_ids(panel_ids_),
+      detector(detector_) {}
 
 scitbx::vec3<double> RefinerData::get_s0() {
   return s0;
@@ -312,8 +315,12 @@ scitbx::af::shared<scitbx::mat2<double>> RefinerData::get_Sobs_array() {
 scitbx::af::shared<size_t> RefinerData::get_panel_ids() {
   return panel_ids;
 }
+Detector& RefinerData::get_detector(){
+  return detector;
+}
 
 ReflectionLikelihood::ReflectionLikelihood(ModelState &model,
+                                           Detector &detector,
                                            scitbx::vec3<double> s0,
                                            scitbx::vec3<double> sp,
                                            cctbx::miller::index<> h,
@@ -322,6 +329,7 @@ ReflectionLikelihood::ReflectionLikelihood(ModelState &model,
                                            scitbx::mat2<double> sobs,
                                            size_t panel_id)
     : modelstate(ReflectionModelState(model, s0, h)),
+      detector(detector),
       s0(s0),
       sp(sp),
       h(h),
@@ -336,17 +344,18 @@ ReflectionLikelihood::ReflectionLikelihood(ModelState &model,
   scitbx::mat3<double> RT = R.transpose();
   S = (R * model.mosaicity_covariance_matrix()) * RT;
   scitbx::af::shared<scitbx::mat3<double>> dS_dp = modelstate.get_dS_dp();
-  dS = {dS_dp.size(), {0, 0, 0, 0, 0, 0, 0, 0, 0}};
+  dS.resize(dS_dp.size(), {0, 0, 0, 0, 0, 0, 0, 0, 0});
   for (size_t i = 0; i < dS_dp.size(); ++i) {
     dS[i] = (R * dS_dp[i]) * RT;
   }
   scitbx::af::shared<scitbx::vec3<double>> dr_dp = modelstate.get_dr_dp();
-  dmu = {dr_dp.size(), {0, 0, 0}};
+  dmu.resize(dr_dp.size(), {0, 0, 0});
   for (size_t i = 0; i < dr_dp.size(); ++i) {
     dmu[i] = R * dr_dp[i];
   }
   this->conditional = ConditionalDistribution2(norm_s0, mu, dmu, S, dS);
 }
+
 void ReflectionLikelihood::update() {
   modelstate.update();
   scitbx::vec3<double> s2 = s0 + modelstate.get_r();
@@ -369,7 +378,111 @@ void ReflectionLikelihood::update() {
   this->conditional = ConditionalDistribution2(norm_s0, mu, dmu, S, dS);
 }
 
-MLTarget::MLTarget(ModelState &model, RefinerData &refinerdata) : model(model) {
+double ReflectionLikelihood::log_likelihood(){
+  double S22_inv = 1.0 / S[8];
+  scitbx::mat2<double> Sbar = conditional.sigma();
+  scitbx::vec2<double> mubar = conditional.mean();
+  scitbx::mat2<double> Sbar_inv = Sbar.inverse();
+  double Sbar_det = Sbar.determinant();
+  // marginal likelihood
+  double m_d = norm_s0 - mu[2];
+  double m_lnL = ctot * (std::log(S[8]) + (S22_inv * pow(m_d, 2)));
+  // conditional likelihood
+  scitbx::vec2<double> c_d = mobs - mubar;
+  scitbx::mat2<double> cdcdT {
+    pow(c_d[0], 2), c_d[0] * c_d[1], c_d[0] * c_d[1], pow(c_d[1], 2)};
+  scitbx::mat2<double> y = Sbar_inv * (sobs + cdcdT);
+  double c_lnL = ctot * (std::log(Sbar_det) + y[0] + y[3]);
+  // return the joint likelihood
+  return -0.5 * (m_lnL + c_lnL);
+}
+
+scitbx::af::shared<double> ReflectionLikelihood::first_derivatives(){
+    
+    scitbx::af::shared<scitbx::mat2<double>> dSbar = conditional.first_derivatives_of_sigma();
+    scitbx::af::shared<scitbx::vec2<double>> dmBar = conditional.first_derivatives_of_mean();
+    scitbx::mat2<double> Sbar = conditional.sigma();
+    scitbx::vec2<double> mubar = conditional.mean();
+    int n_param = dSbar.size();
+    double S22_inv = 1 / S[8];
+    scitbx::mat2<double> Sbar_inv = Sbar.inverse();
+    double epsilon = norm_s0 - mu[2];
+    scitbx::vec2<double> c_d = mobs - mubar;
+    scitbx::mat2<double> I {1.0, 0.0, 0.0, 1.0};
+    scitbx::mat2<double> cdcdT {
+      pow(c_d[0], 2), c_d[0] * c_d[1], c_d[0] * c_d[1], pow(c_d[1], 2)};
+    scitbx::mat2<double> V2 = I - (Sbar_inv * (sobs + cdcdT));
+    scitbx::af::shared<double> V_vec(n_param, 0);
+    for (int i = 0; i < n_param; ++i) {
+      scitbx::mat2<double> Vvec = Sbar_inv * dSbar[i];
+      V_vec[i] =
+        ctot * (Vvec[0] * V2[0] + Vvec[1] * V2[2] + Vvec[2] * V2[1] + Vvec[3] * V2[3]);
+    }
+    for (int i = 0; i < n_param; ++i) {
+      V_vec[i] += ctot
+                  * (S22_inv * dS[i][8] * (1 - (S22_inv * pow(epsilon, 2)))
+                     + (2 * S22_inv * epsilon * -1.0 * dmu[i][2]));
+    }
+    for (int i = 0; i < n_param; ++i) {
+      scitbx::mat2<double> Wvec {c_d[0] * dmBar[i][0],
+                        c_d[0] * dmBar[i][1],
+                        c_d[1] * dmBar[i][0],
+                        c_d[1] * dmBar[i][1]};
+      V_vec[i] -= 2.0 * ctot
+                  * (Wvec[0] * Sbar_inv[0] + Wvec[1] * Sbar_inv[2]
+                     + Wvec[2] * Sbar_inv[1] + Wvec[3] * Sbar_inv[3]);
+    }
+    for (int i=0;i<V_vec.size();++i){
+      std::cout << V_vec[i] << std::endl;
+    }
+    return V_vec;
+}
+
+scitbx::af::versa<double, scitbx::af::c_grid<2>> ReflectionLikelihood::fisher_information(){
+  scitbx::af::shared<scitbx::mat2<double>> dSbar = conditional.first_derivatives_of_sigma();
+  scitbx::af::shared<scitbx::vec2<double>> dmBar = conditional.first_derivatives_of_mean();
+  scitbx::mat2<double> Sbar = conditional.sigma();
+  int n1 = dS.size();
+  double S22_inv = 1 / S[8];
+  scitbx::mat2<double> Sbar_inv = Sbar.inverse();
+  scitbx::af::versa<double, scitbx::af::c_grid<2>> I(scitbx::af::c_grid<2>(n1, n1), 0);
+  for (int j = 0; j < n1; ++j) {
+    for (int i = 0; i < n1; ++i) {
+      double U = pow(S22_inv, 2) * dS[j][8] * dS[i][8];
+      double V = (((Sbar_inv * dSbar[j]) * Sbar_inv) * dSbar[i]).trace();
+      scitbx::vec2<double> Y = Sbar_inv * dmBar[i];
+      double W = 2.0 * ((Y[0] * dmBar[j][0]) + (Y[1] * dmBar[j][1]));
+      double X = 2.0 * dmu[i][2] * S22_inv * dmu[j][2];
+      I(j, i) = 0.5 * ctot * (V + W + U + X);
+    }
+  }
+  return I;
+}
+
+double ReflectionLikelihood::square_error(){
+  scitbx::vec2<double> mubar = conditional.mean();
+  return pow(mubar[0] - mobs[0], 2) + pow(mubar[1] - mobs[1], 2);
+}
+
+scitbx::vec2<double> ReflectionLikelihood::rse(){
+  scitbx::vec3<double> s1 {};
+  scitbx::vec3<double> s3 {};
+  scitbx::vec2<double> mbar = conditional.mean();
+  s1[0] = (R[0] * mbar[0]) + (R[3] * mbar[1]) + (R[6] * norm_s0);
+  s1[1] = (R[1] * mbar[0]) + (R[4] * mbar[1]) + (R[7] * norm_s0);
+  s1[2] = (R[2] * mbar[0]) + (R[5] * mbar[1]) + (R[8] * norm_s0);
+  s3[0] = (R[0] * mobs[0]) + (R[3] * mobs[1]) + (R[6] * norm_s0);
+  s3[1] = (R[1] * mobs[0]) + (R[4] * mobs[1]) + (R[7] * norm_s0);
+  s3[2] = (R[2] * mobs[0]) + (R[5] * mobs[1]) + (R[8] * norm_s0);
+  scitbx::vec2<double> xyzcal = (detector)[0].get_ray_intersection_px(s1);
+  scitbx::vec2<double> xyzobs = (detector)[0].get_ray_intersection_px(s3);
+  double rx2 = pow(xyzcal[0] - xyzobs[0], 2);
+  double ry2 = pow(xyzcal[1] - xyzobs[1], 2);
+  scitbx::vec2<double> rse {rx2, ry2};
+  return rse;
+}
+
+MLTarget::MLTarget(ModelState &model_, RefinerData &refinerdata) : model(model_) {
   scitbx::af::shared<cctbx::miller::index<>> h_list = refinerdata.get_h_array();
   scitbx::vec3<double> s0 = refinerdata.get_s0();
   scitbx::af::shared<scitbx::vec3<double>> sp_list = refinerdata.get_sp_array();
@@ -379,6 +492,7 @@ MLTarget::MLTarget(ModelState &model, RefinerData &refinerdata) : model(model) {
   scitbx::af::shared<scitbx::mat2<double>> sobs_list = refinerdata.get_Sobs_array();
   for (size_t i = 0; i < h_list.size(); ++i) {
     data.push_back(ReflectionLikelihood(model,
+                                        refinerdata.get_detector(),
                                         s0,
                                         sp_list[i],
                                         h_list[i],
@@ -394,3 +508,64 @@ void MLTarget::update() {
     d.update();
   }
 }
+
+double MLTarget::log_likelihood(){
+  double l = 0.0;
+  for (ReflectionLikelihood d : data) {
+    l += d.log_likelihood();
+  }
+  return l;
+}
+
+double MLTarget::mse(){
+  double mse = 0.0;
+  for (ReflectionLikelihood d : data) {
+    mse += d.square_error();
+  }
+  mse /= data.size();
+  return mse;
+}
+
+scitbx::vec2<double> MLTarget::rmsd(){
+  scitbx::vec2<double> rmsd = {0.0, 0.0};
+  for (ReflectionLikelihood d : data) {
+    rmsd += d.rse();
+  }
+  rmsd[0] /= data.size();
+  rmsd[1] /= data.size();
+  rmsd[0] = pow(rmsd[0], 0.5);
+  rmsd[1] = pow(rmsd[1], 0.5);
+  return rmsd;
+}
+
+scitbx::af::shared<double> MLTarget::first_derivatives(){
+  int n1 = model.n_active_parameters();
+  scitbx::af::shared<double> derivatives(n1, 0);
+  for (ReflectionLikelihood d : data) {
+    std::cout << std::string("adding next deriv") << std::endl;
+    scitbx::af::shared<double> di = d.first_derivatives();
+    for (size_t i=0;i<di.size();++i){
+      derivatives[i] += di[i];
+    }
+  }
+  return derivatives;
+}
+
+scitbx::af::versa<double, scitbx::af::c_grid<2>> MLTarget::fisher_information(){
+  int n1 = model.n_active_parameters();
+  scitbx::af::versa<double, scitbx::af::c_grid<2>> joint_f(scitbx::af::c_grid<2>(n1, n1), 0);
+  for (ReflectionLikelihood d : data) {
+    scitbx::af::versa<double, scitbx::af::c_grid<2>> fi = d.fisher_information();
+    for (size_t i=0;i<fi.size();++i ){
+      joint_f[i] += fi[i];
+    }
+    /*for (size_t i=0;i<fi.accessor()[0];++i){
+      for (size_t j=0;j<fi.accessor()[1];++j){
+        joint_f += fi(i, j);
+      }
+    }*/
+  }
+  return joint_f;
+}
+
+
