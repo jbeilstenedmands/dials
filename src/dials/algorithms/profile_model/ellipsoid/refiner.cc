@@ -423,9 +423,9 @@ scitbx::af::shared<double> ReflectionLikelihood::first_derivatives() {
   scitbx::mat2<double> Sbar_inv = Sbar.inverse();
   double epsilon = norm_s0 - mu[2];
   scitbx::vec2<double> c_d = mobs - mubar;
-  scitbx::mat2<double> I{1.0, 0.0, 0.0, 1.0};
-  scitbx::mat2<double> cdcdT{
-    pow(c_d[0], 2), c_d[0] * c_d[1], c_d[0] * c_d[1], pow(c_d[1], 2)};
+  scitbx::mat2<double> I(1.0, 0.0, 0.0, 1.0);
+  scitbx::mat2<double> cdcdT(
+    pow(c_d[0], 2), c_d[0] * c_d[1], c_d[0] * c_d[1], pow(c_d[1], 2));
   scitbx::mat2<double> V2 = I - (Sbar_inv * (sobs + cdcdT));
   scitbx::af::shared<double> V_vec(n_param, 0);
   for (int i = 0; i < n_param; ++i) {
@@ -439,10 +439,10 @@ scitbx::af::shared<double> ReflectionLikelihood::first_derivatives() {
                    + (2 * S22_inv * epsilon * -1.0 * dmu[i][2]));
   }
   for (int i = 0; i < n_param; ++i) {
-    scitbx::mat2<double> Wvec{c_d[0] * dmBar[i][0],
+    scitbx::mat2<double> Wvec(c_d[0] * dmBar[i][0],
                               c_d[0] * dmBar[i][1],
                               c_d[1] * dmBar[i][0],
-                              c_d[1] * dmBar[i][1]};
+                              c_d[1] * dmBar[i][1]);
     V_vec[i] -= 2.0 * ctot
                 * (Wvec[0] * Sbar_inv[0] + Wvec[1] * Sbar_inv[2] + Wvec[2] * Sbar_inv[1]
                    + Wvec[3] * Sbar_inv[3]);
@@ -450,6 +450,7 @@ scitbx::af::shared<double> ReflectionLikelihood::first_derivatives() {
   for (int i = 0; i < V_vec.size(); ++i) {
     std::cout << V_vec[i] << std::endl;
   }
+  DIALS_ASSERT(0);
   return V_vec;
 }
 

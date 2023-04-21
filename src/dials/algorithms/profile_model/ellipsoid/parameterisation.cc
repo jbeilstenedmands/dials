@@ -63,7 +63,7 @@ int Simple1MosaicityParameterisation::num_parameters() {
 }
 scitbx::mat3<double> Simple6MosaicityParameterisation::sigma() {
   scitbx::af::shared<double> params = this->get_params();
-  scitbx::mat3<double> M {
+  scitbx::mat3<double> M{
     params[0], 0, 0, params[1], params[2], 0, params[3], params[4], params[5]};
   scitbx::mat3<double> MMT = M * M.transpose();
   return MMT;
@@ -91,7 +91,8 @@ Simple6MosaicityParameterisation::Simple6MosaicityParameterisation(
   scitbx::af::shared<double> parameters)
     : parameters_(parameters) {}
 
-void Simple6MosaicityParameterisation::set_params(scitbx::af::shared<double> parameters) {
+void Simple6MosaicityParameterisation::set_params(
+  scitbx::af::shared<double> parameters) {
   parameters_ = parameters;
 }
 scitbx::af::shared<double> Simple6MosaicityParameterisation::get_params() {
@@ -235,24 +236,24 @@ ModelState::ModelState(const dxtbx::model::Crystal &crystal,
       fix_wavelength_spread(fix_wavelength_spread),
       fix_mosaic_spread(fix_mosaic_spread),
       n_active_params(0) {
-        if (!fix_orientation) {
-          scitbx::af::shared<double> p = U_parameterisation.get_params();
-          n_active_params += p.size();
-        }
-        if (!fix_unit_cell) {
-          scitbx::af::shared<double> p = B_parameterisation.get_params();
-          n_active_params += p.size();
-        }
-        if (!fix_mosaic_spread) {
-          scitbx::af::shared<double> p = M_parameterisation.get_params();
-          n_active_params += p.size();
-        }
-        if (!fix_wavelength_spread) {
-          n_active_params += 1;
-        }
-      }
+  if (!fix_orientation) {
+    scitbx::af::shared<double> p = U_parameterisation.get_params();
+    n_active_params += p.size();
+  }
+  if (!fix_unit_cell) {
+    scitbx::af::shared<double> p = B_parameterisation.get_params();
+    n_active_params += p.size();
+  }
+  if (!fix_mosaic_spread) {
+    scitbx::af::shared<double> p = M_parameterisation.get_params();
+    n_active_params += p.size();
+  }
+  if (!fix_wavelength_spread) {
+    n_active_params += 1;
+  }
+}
 
-int ModelState::n_active_parameters(){
+int ModelState::n_active_parameters() {
   return n_active_params;
 }
 
@@ -352,21 +353,34 @@ scitbx::af::shared<double> ModelState::active_parameters() {
 }
 void ModelState::set_active_parameters(scitbx::af::shared<double> parameters) {
   size_t n_param = 0;
+  DIALS_ASSERT(parameters.size() == n_active_parameters());
   if (!fix_orientation) {
     size_t nU = U_parameterisation.get_params().size();
-    scitbx::af::shared<double> new_U(parameters[n_param], parameters[nU + n_param]);
+    std::cout << nU << std::endl;
+    scitbx::af::shared<double> new_U(nU, 0.0);
+    for (size_t i = 0; i < nU; ++i) {
+      new_U[i] = parameters[i + n_param];
+    }
     U_parameterisation.set_params(new_U);
     n_param += nU;
   }
   if (!fix_unit_cell) {
     size_t nB = B_parameterisation.get_params().size();
-    scitbx::af::shared<double> new_B(parameters[n_param], parameters[nB + n_param]);
+    std::cout << nB << std::endl;
+    scitbx::af::shared<double> new_B(nB, 0.0);
+    for (size_t i = 0; i < nB; ++i) {
+      new_B[i] = parameters[i + n_param];
+    }
     B_parameterisation.set_params(new_B);
     n_param += nB;
   }
   if (!fix_mosaic_spread) {
     size_t nM = M_parameterisation.get_params().size();
-    scitbx::af::shared<double> new_M(parameters[n_param], parameters[nM + n_param]);
+    std::cout << nM << std::endl;
+    scitbx::af::shared<double> new_M(nM, 0.0);
+    for (size_t i = 0; i < nM; ++i) {
+      new_M[i] = parameters[i + n_param];
+    }
     M_parameterisation.set_params(new_M);
     n_param += nM;
   }
@@ -402,7 +416,7 @@ ReflectionModelState::ReflectionModelState(ModelState &state,
   if (!state_.is_wavelength_spread_fixed()) {
     n_params += 1;
   }
-  dr_dp.resize(n_params, {0,0,0});
+  dr_dp.resize(n_params, {0, 0, 0});
   ds_dp.resize(n_params, {0, 0, 0, 0, 0, 0, 0, 0, 0});
   dl_dp.resize(n_params, 0);
   if (state_.is_mosaic_spread_angular()) {
