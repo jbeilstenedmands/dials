@@ -261,6 +261,8 @@ class ReflectionLikelihood(object):
         mubar = self.conditional.mean()
         Sbar_inv = inv(Sbar)
         Sbar_det = det(Sbar)
+        print(S22_inv)
+        print(Sbar_det)
 
         # Weights for marginal and conditional components
         m_w = ctot
@@ -268,15 +270,16 @@ class ReflectionLikelihood(object):
 
         # Compute the marginal likelihood
         m_d = self.norm_s0 - mu2
+        print(m_d)
         m_lnL = m_w * (log(S22) + S22_inv * m_d**2)
-
+        print(m_lnL)
         # Compute the conditional likelihood
         c_d = mobs - mubar
         c_lnL = c_w * (
             log(Sbar_det)
             + np.trace(np.matmul(Sbar_inv, (Sobs + np.matmul(c_d, c_d.T))))
         )
-
+        print(c_lnL)
         # Return the joint likelihood
         jLL = -0.5 * (m_lnL + c_lnL)
         return jLL
@@ -598,7 +601,7 @@ class FisherScoringMaximumLikelihoodBase(object):
         """
 
         # Loop through the maximum number of iterations
-        for it in range(25):  # self.max_iter):
+        for it in range(5):  # self.max_iter):
             # Compute the derivative and fisher information at x0
             x0 = self.x0
             print(it)
@@ -632,7 +635,7 @@ class FisherScoringMaximumLikelihoodBase(object):
 
             # Update the parameter
             self.x0 = x
-
+        assert 0
         # Save the parameters
         self.num_iter = it + 1
         self.parameters = x

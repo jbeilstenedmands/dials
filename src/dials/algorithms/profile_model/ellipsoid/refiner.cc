@@ -6,6 +6,7 @@
 #include <dials/algorithms/profile_model/ellipsoid/refiner.h>
 #include <dials/array_family/reflection_table.h>
 #include <dxtbx/model/experiment.h>
+#include <iomanip>
 using dxtbx::model::Detector;
 /*
 scitbx::vec2<double> rse(
@@ -71,13 +72,13 @@ ConditionalDistribution2::ConditionalDistribution2(
   scitbx::vec2<double> mu1(mu[0], mu[1]);
 
   epsilon = norm_s0_ - mu[2];
-  mubar = mu1 + (S12 * (1.0 / S[8]) * epsilon);
 
-  scitbx::mat2<double> outerprodS12S21(S12[0] * S21[0] / S[8],
-                                       S12[0] * S21[1] / S[8],
-                                       S12[1] * S21[0] / S[8],
-                                       S12[1] * S21[1] / S[8]);
-  Sbar = S11 - outerprodS12S21;
+  double S22_inv = 1.0 / S[8];
+  mubar = mu1 + (S12 * S22_inv * epsilon);
+  scitbx::mat2<double> S12_S21;
+  scitbx::matrix::multiply_transpose(&S12[0], &S21[0], 2, 1, 2, &S12_S21[0]);
+
+  Sbar = S11 - S12_S21 * S22_inv;
 }
 
 void ConditionalDistribution2::update(double norm_s0_,
@@ -95,13 +96,12 @@ void ConditionalDistribution2::update(double norm_s0_,
   scitbx::vec2<double> mu1(mu[0], mu[1]);
 
   epsilon = norm_s0_ - mu[2];
-  mubar = mu1 + (S12 * (1.0 / S[8]) * epsilon);
+  double S22_inv = 1.0 / S[8];
+  mubar = mu1 + (S12 * S22_inv * epsilon);
+  scitbx::mat2<double> S12_S21;
+  scitbx::matrix::multiply_transpose(&S12[0], &S21[0], 2, 1, 2, &S12_S21[0]);
 
-  scitbx::mat2<double> outerprodS12S21(S12[0] * S21[0] / S[8],
-                                       S12[0] * S21[1] / S[8],
-                                       S12[1] * S21[0] / S[8],
-                                       S12[1] * S21[1] / S[8]);
-  Sbar = S11 - outerprodS12S21;
+  Sbar = S11 - S12_S21 * S22_inv;
   dmbar.clear();
   dSbar.clear();
 }
@@ -154,6 +154,7 @@ void test_conditional(double norm_s0,
   scitbx::af::shared<scitbx::vec2<double>> dm = cond.first_derivatives_of_mean();
   scitbx::af::shared<scitbx::mat2<double>> dSs = cond.first_derivatives_of_sigma();
   scitbx::vec2<double> mean = cond.mean();
+  std::cout << std::setprecision(12) << std::endl;
   std::cout << mean[0] << std::endl;
   std::cout << mean[1] << std::endl;
   scitbx::mat2<double> sigma = cond.sigma();
@@ -210,13 +211,12 @@ ReflectionStatistics reflection_statistics(const dxtbx::model::Panel panel,
   int n1 = data.accessor()[1];
   int n2 = data.accessor()[2];
 
-  scitbx::af::versa<float_type, scitbx::af::c_grid<3>> X(
-    scitbx::af::c_grid<3>(n1, n2, 2));
-  scitbx::af::versa<float_type, scitbx::af::c_grid<2>> C(scitbx::af::c_grid<2>(n1, n2));
-  float_type ctot = 0;
+  scitbx::af::versa<double, scitbx::af::c_grid<3>> X(scitbx::af::c_grid<3>(n1, n2, 2));
+  scitbx::af::versa<double, scitbx::af::c_grid<2>> C(scitbx::af::c_grid<2>(n1, n2));
+  double ctot = 0.0;
   for (int j = 0; j < n1; ++j) {
     for (int i = 0; i < n2; ++i) {
-      float_type c = data(0, j, i) - bgrd(0, j, i);
+      double c = data(0, j, i) - bgrd(0, j, i);
       if (c > 0) {
         if ((mask(0, j, i) & (1 | 4)) == (1 | 4)) {
           ctot += c;
@@ -243,13 +243,13 @@ ReflectionStatistics reflection_statistics(const dxtbx::model::Panel panel,
       xbar[1] += X(j, i, 1) * C(j, i);
     }
   }
-  xbar[0] = xbar[0] / ctot;
-  xbar[1] = xbar[1] / ctot;
+  xbar[0] /= ctot;
+  xbar[1] /= ctot;
 
   scitbx::mat2<double> Sobs(0, 0, 0, 0);
   for (int j = 0; j < n1; ++j) {
     for (int i = 0; i < n2; ++i) {
-      float_type c_i = C(j, i);
+      double c_i = C(j, i);
       scitbx::vec2<double> x_i(X(j, i, 0) - xbar[0], X(j, i, 1) - xbar[1]);
       Sobs[0] += pow(x_i[0], 2) * c_i;
       Sobs[1] += x_i[0] * x_i[1] * c_i;
@@ -257,10 +257,10 @@ ReflectionStatistics reflection_statistics(const dxtbx::model::Panel panel,
       Sobs[3] += pow(x_i[1], 2) * c_i;
     }
   }
-  Sobs[0] = Sobs[0] / ctot;
-  Sobs[1] = Sobs[1] / ctot;
-  Sobs[2] = Sobs[2] / ctot;
-  Sobs[3] = Sobs[3] / ctot;
+  Sobs[0] /= ctot;
+  Sobs[1] /= ctot;
+  Sobs[2] /= ctot;
+  Sobs[3] /= ctot;
 
   ReflectionStatistics result = {sp, ctot, xbar, Sobs};
   return result;
@@ -411,21 +411,28 @@ void ReflectionLikelihood::update() {
 }
 
 double ReflectionLikelihood::log_likelihood() {
+  std::cout << std::setprecision(20);
   double S22_inv = 1.0 / S[8];
   scitbx::mat2<double> Sbar = conditional.sigma();
   scitbx::vec2<double> mubar = conditional.mean();
   scitbx::mat2<double> Sbar_inv = Sbar.inverse();
   double Sbar_det = Sbar.determinant();
+  // std::cout << std::string("LL") << std::endl;
+  // std::cout << S22_inv << std::endl;
+  // std::cout << Sbar_det << std::endl;
   // marginal likelihood
   double m_d = norm_s0 - mu[2];
+  // std::cout << m_d << std::endl;
   double m_lnL = ctot * (std::log(S[8]) + (S22_inv * pow(m_d, 2)));
-  // conditional likelihood
+  // std::cout << m_lnL << std::endl;
+  //  conditional likelihood
   scitbx::vec2<double> c_d = mobs - mubar;
   scitbx::mat2<double> cdcdT(
     pow(c_d[0], 2), c_d[0] * c_d[1], c_d[0] * c_d[1], pow(c_d[1], 2));
   scitbx::mat2<double> y = Sbar_inv * (sobs + cdcdT);
   double c_lnL = ctot * (std::log(Sbar_det) + y[0] + y[3]);
-  // return the joint likelihood
+  // std::cout << c_lnL << std::endl;
+  //  return the joint likelihood
   double ret = -0.5 * (m_lnL + c_lnL);
   return ret;
 }
