@@ -20,14 +20,14 @@ class BaseParameterisation {
 public:
   BaseParameterisation(scitbx::af::shared<double> parameters);
   scitbx::af::shared<double> get_params();
-  virtual int num_parameters()=0;
+  virtual int num_parameters() = 0;
   void set_params(scitbx::af::shared<double> parameters);
   bool is_angular();
-  virtual scitbx::mat3<double> sigma()=0;
-  virtual scitbx::af::shared<scitbx::mat3<double>> first_derivatives()=0;
+  virtual scitbx::mat3<double> sigma() = 0;
+  virtual scitbx::af::shared<scitbx::mat3<double>> first_derivatives() = 0;
 
 private:
-  scitbx::af::shared<double> parameters {};
+  scitbx::af::shared<double> parameters{};
 };
 
 class Simple1MosaicityParameterisation : public BaseParameterisation {
@@ -49,8 +49,9 @@ public:
   scitbx::af::shared<double> get_params();
   void set_params(scitbx::af::shared<double> parameters);
   bool is_angular();
+
 private:
-  scitbx::af::shared<double> parameters_ {};
+  scitbx::af::shared<double> parameters_{};
 };
 
 class WavelengthSpreadParameterisation {
@@ -110,8 +111,8 @@ public:
 private:
   scitbx::af::shared<double> params;
   void compose();
-  scitbx::mat3<double> B_ {};
-  scitbx::af::shared<scitbx::mat3<double>> dS_dp {};
+  scitbx::mat3<double> B_{};
+  scitbx::af::shared<scitbx::mat3<double>> dS_dp{};
   SymmetrizeReduceEnlarge SRE;
 };
 
@@ -156,11 +157,11 @@ private:
   WavelengthSpreadParameterisation &L_parameterisation;
   SimpleCellParameterisation B_parameterisation;
   SimpleUParameterisation U_parameterisation;
-  bool fix_orientation {};
-  bool fix_unit_cell {};
-  bool fix_wavelength_spread {};
-  bool fix_mosaic_spread {};
-  int n_active_params {0};
+  bool fix_orientation{};
+  bool fix_unit_cell{};
+  bool fix_wavelength_spread{};
+  bool fix_mosaic_spread{};
+  int n_active_params{0};
 };
 
 class ReflectionModelState {
@@ -171,23 +172,23 @@ public:
   void update();
   scitbx::mat3<double> mosaicity_covariance_matrix();
   scitbx::vec3<double> get_r();
-  ModelState get_state();
+  ModelState &get_state();
   scitbx::af::shared<scitbx::mat3<double>> get_dS_dp();
   scitbx::af::shared<scitbx::vec3<double>> get_dr_dp();
   scitbx::af::shared<double> get_dL_dp();
 
 private:
-  scitbx::vec3<double> s0_ {};
-  scitbx::vec3<double> r {};
-  cctbx::miller::index<> h_ {};
-  scitbx::vec3<double> norm_s0 {};
+  scitbx::vec3<double> s0_{};
+  scitbx::vec3<double> r{};
+  cctbx::miller::index<> h_{};
+  scitbx::vec3<double> norm_s0{};
   ModelState &state_;
   scitbx::mat3<double> Q{0, 0, 0, 0, 0, 0, 0, 0, 0};
   scitbx::mat3<double> sigma{0, 0, 0, 0, 0, 0, 0, 0, 0};
   double sigma_lambda{0};
-  scitbx::af::shared<scitbx::vec3<double>> dr_dp {};
-  scitbx::af::shared<scitbx::mat3<double>> ds_dp {};
-  scitbx::af::shared<double> dl_dp {};
+  scitbx::af::shared<scitbx::vec3<double>> dr_dp{};
+  scitbx::af::shared<scitbx::mat3<double>> ds_dp{};
+  scitbx::af::shared<double> dl_dp{};
   void recalc_sigma();
   void recalc_sigma_lambda();
 };
@@ -203,8 +204,8 @@ namespace dials { namespace algorithms { namespace boost_python {
       .def(init<scitbx::af::shared<double>>())
       .def("get_params", &Simple1MosaicityParameterisation::get_params)
       .def("sigma", &Simple1MosaicityParameterisation::sigma);
-    class_<Simple6MosaicityParameterisation>(
-      "Simple6MosaicityParameterisation", no_init)
+    class_<Simple6MosaicityParameterisation>("Simple6MosaicityParameterisation",
+                                             no_init)
       .def(init<scitbx::af::shared<double>>())
       .def("get_params", &Simple6MosaicityParameterisation::get_params)
       .def("sigma", &Simple6MosaicityParameterisation::sigma);

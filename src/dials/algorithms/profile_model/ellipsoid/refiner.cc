@@ -35,9 +35,9 @@ inline scitbx::vec2<double> compute_dmbar(const scitbx::mat3<double> &S,
                                           const scitbx::mat3<double> &dS,
                                           const scitbx::vec3<double> &dmu,
                                           double &epsilon) {
-  scitbx::vec2<double> S12{S[2], S[5]};
-  scitbx::vec2<double> A{dmu[0], dmu[1]};
-  scitbx::vec2<double> B{dS[2] * epsilon / S[8], dS[5] * epsilon / S[8]};
+  scitbx::vec2<double> S12(S[2], S[5]);
+  scitbx::vec2<double> A(dmu[0], dmu[1]);
+  scitbx::vec2<double> B(dS[2] * epsilon / S[8], dS[5] * epsilon / S[8]);
   scitbx::vec2<double> C = S12 * -1.0 * dS[8] * epsilon / (S[8] * S[8]);
   scitbx::vec2<double> D = S12 * -1.0 * dmu[2] / S[8];
   return A + B + C + D;
@@ -65,19 +65,50 @@ ConditionalDistribution2::ConditionalDistribution2(
   scitbx::mat3<double> S_,
   scitbx::af::shared<scitbx::mat3<double>> dS_)
     : mu(mu_), dmu(dmu_), S(S_), dS(dS_) {
-  scitbx::mat2<double> S11{S[0], S[1], S[3], S[4]};
-  scitbx::vec2<double> S12{S[2], S[5]};
-  scitbx::vec2<double> S21{S[6], S[7]};
-  scitbx::vec2<double> mu1{mu[0], mu[1]};
+  scitbx::mat2<double> S11(S[0], S[1], S[3], S[4]);
+  scitbx::vec2<double> S12(S[2], S[5]);
+  scitbx::vec2<double> S21(S[6], S[7]);
+  scitbx::vec2<double> mu1(mu[0], mu[1]);
 
   epsilon = norm_s0_ - mu[2];
   mubar = mu1 + (S12 * (1.0 / S[8]) * epsilon);
 
-  scitbx::mat2<double> outerprodS12S21{S12[0] * S21[0] / S[8],
+  scitbx::mat2<double> outerprodS12S21(S12[0] * S21[0] / S[8],
                                        S12[0] * S21[1] / S[8],
                                        S12[1] * S21[0] / S[8],
-                                       S12[1] * S21[1] / S[8]};
+                                       S12[1] * S21[1] / S[8]);
   Sbar = S11 - outerprodS12S21;
+}
+
+void ConditionalDistribution2::update(double norm_s0_,
+                                      scitbx::vec3<double> mu_,
+                                      scitbx::af::shared<scitbx::vec3<double>> dmu_,
+                                      scitbx::mat3<double> S_,
+                                      scitbx::af::shared<scitbx::mat3<double>> dS_) {
+  mu = mu_;
+  dmu = dmu_;
+  S = S_;
+  dS = dS_;
+  scitbx::mat2<double> S11(S[0], S[1], S[3], S[4]);
+  scitbx::vec2<double> S12(S[2], S[5]);
+  scitbx::vec2<double> S21(S[6], S[7]);
+  scitbx::vec2<double> mu1(mu[0], mu[1]);
+
+  epsilon = norm_s0_ - mu[2];
+  mubar = mu1 + (S12 * (1.0 / S[8]) * epsilon);
+
+  scitbx::mat2<double> outerprodS12S21(S12[0] * S21[0] / S[8],
+                                       S12[0] * S21[1] / S[8],
+                                       S12[1] * S21[0] / S[8],
+                                       S12[1] * S21[1] / S[8]);
+  Sbar = S11 - outerprodS12S21;
+  dmbar.clear();
+  dSbar.clear();
+}
+
+scitbx::mat3<double> ConditionalDistribution2::getS() {
+  /*Return the conditional mean*/
+  return S;
 }
 
 scitbx::vec2<double> ConditionalDistribution2::mean() {
@@ -319,7 +350,7 @@ Detector &RefinerData::get_detector() {
   return detector;
 }
 
-ReflectionLikelihood::ReflectionLikelihood(ModelState &model,
+ReflectionLikelihood::ReflectionLikelihood(ModelState &model_,
                                            Detector &detector,
                                            scitbx::vec3<double> s0,
                                            scitbx::vec3<double> sp,
@@ -328,7 +359,8 @@ ReflectionLikelihood::ReflectionLikelihood(ModelState &model,
                                            scitbx::vec2<double> mobs,
                                            scitbx::mat2<double> sobs,
                                            size_t panel_id)
-    : modelstate(ReflectionModelState(model, s0, h)),
+    : model(model_),
+      modelstate(ReflectionModelState(model, s0, h)),
       detector(detector),
       s0(s0),
       sp(sp),
@@ -353,14 +385,14 @@ ReflectionLikelihood::ReflectionLikelihood(ModelState &model,
   for (size_t i = 0; i < dr_dp.size(); ++i) {
     dmu[i] = R * dr_dp[i];
   }
-  this->conditional = ConditionalDistribution2(norm_s0, mu, dmu, S, dS);
+  conditional = ConditionalDistribution2(norm_s0, mu, dmu, S, dS);
 }
 
 void ReflectionLikelihood::update() {
   modelstate.update();
   scitbx::vec3<double> s2 = s0 + modelstate.get_r();
   mu = R * s2;
-  ModelState state = modelstate.get_state();
+  ModelState &state = modelstate.get_state();
   scitbx::mat3<double> RT = R.transpose();
   if (!state.is_mosaic_spread_fixed()) {
     S = (R * modelstate.mosaicity_covariance_matrix()) * RT;
@@ -375,7 +407,7 @@ void ReflectionLikelihood::update() {
       dmu[i] = R * dr_dp[i];
     }
   }
-  this->conditional = ConditionalDistribution2(norm_s0, mu, dmu, S, dS);
+  conditional.update(norm_s0, mu, dmu, S, dS);
 }
 
 double ReflectionLikelihood::log_likelihood() {
@@ -389,12 +421,13 @@ double ReflectionLikelihood::log_likelihood() {
   double m_lnL = ctot * (std::log(S[8]) + (S22_inv * pow(m_d, 2)));
   // conditional likelihood
   scitbx::vec2<double> c_d = mobs - mubar;
-  scitbx::mat2<double> cdcdT{
-    pow(c_d[0], 2), c_d[0] * c_d[1], c_d[0] * c_d[1], pow(c_d[1], 2)};
+  scitbx::mat2<double> cdcdT(
+    pow(c_d[0], 2), c_d[0] * c_d[1], c_d[0] * c_d[1], pow(c_d[1], 2));
   scitbx::mat2<double> y = Sbar_inv * (sobs + cdcdT);
   double c_lnL = ctot * (std::log(Sbar_det) + y[0] + y[3]);
   // return the joint likelihood
-  return -0.5 * (m_lnL + c_lnL);
+  double ret = -0.5 * (m_lnL + c_lnL);
+  return ret;
 }
 
 scitbx::af::shared<double> ReflectionLikelihood::first_derivatives() {
@@ -492,15 +525,16 @@ MLTarget::MLTarget(ModelState &model_, RefinerData &refinerdata) : model(model_)
   scitbx::af::shared<size_t> panel_ids = refinerdata.get_panel_ids();
   scitbx::af::shared<scitbx::mat2<double>> sobs_list = refinerdata.get_Sobs_array();
   for (size_t i = 0; i < h_list.size(); ++i) {
-    data.push_back(ReflectionLikelihood(model,
-                                        refinerdata.get_detector(),
-                                        s0,
-                                        sp_list[i],
-                                        h_list[i],
-                                        ctot_list[i],
-                                        mobs_list[i],
-                                        sobs_list[i],
-                                        panel_ids[i]));
+    ReflectionLikelihood RLi(model,
+                             refinerdata.get_detector(),
+                             s0,
+                             sp_list[i],
+                             h_list[i],
+                             ctot_list[i],
+                             mobs_list[i],
+                             sobs_list[i],
+                             panel_ids[i]);
+    data.push_back(RLi);
   }
 }
 

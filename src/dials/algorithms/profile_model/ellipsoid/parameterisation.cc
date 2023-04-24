@@ -435,7 +435,7 @@ ReflectionModelState::ReflectionModelState(ModelState &state,
   update();
 }
 
-ModelState ReflectionModelState::get_state() {
+ModelState &ReflectionModelState::get_state() {
   return state_;
 }
 

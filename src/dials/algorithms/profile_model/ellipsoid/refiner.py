@@ -596,13 +596,14 @@ class FisherScoringMaximumLikelihoodBase(object):
         Find the maximum likelihood estimate
 
         """
-        x0 = self.x0
 
         # Loop through the maximum number of iterations
-        for it in range(5):  # self.max_iter):
+        for it in range(25):  # self.max_iter):
             # Compute the derivative and fisher information at x0
+            x0 = self.x0
             print(it)
-            print(x0)
+            # print(flex.double(list(x0)))
+
             S, I = self.score_and_fisher_information(x0)
 
             # Solve the update equation to get direction
@@ -620,14 +621,17 @@ class FisherScoringMaximumLikelihoodBase(object):
                 x = self.gradient_search(x0)
 
             # Call an update
+            self._ml_target = MLTarget(
+                self.model,
+                self.refinerdata,
+            )
             self.callback(x)
             # Break the loop if the parameters change less than the tolerance
             if (x - x0).length() < self.tolerance:
                 break
 
             # Update the parameter
-            print(type(x))
-            x0 = x
+            self.x0 = x
 
         # Save the parameters
         self.num_iter = it + 1
@@ -779,6 +783,7 @@ class FisherScoringMaximumLikelihood(FisherScoringMaximumLikelihoodBase):
         self._ml_target.update()
         S = self._ml_target.first_derivatives()
         I = self._ml_target.fisher_information()
+        print(list(S))
         return S, I
 
     def mse(self, x):
@@ -840,9 +845,9 @@ class FisherScoringMaximumLikelihood(FisherScoringMaximumLikelihoodBase):
         lnL = self._ml_target.log_likelihood()
         print(lnL)
         mse = self._ml_target.mse()
-        print(sqrt(mse))
+        # (sqrt(mse))
         rmsd = self._ml_target.rmsd()
-        print(rmsd)
+        # print(rmsd)
         print("done callback")
 
         # Get the unit cell

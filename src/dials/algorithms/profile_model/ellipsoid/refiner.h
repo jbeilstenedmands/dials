@@ -36,6 +36,12 @@ public:
   scitbx::mat2<double> sigma();
   scitbx::af::shared<scitbx::vec2<double>> first_derivatives_of_mean();
   scitbx::af::shared<scitbx::mat2<double>> first_derivatives_of_sigma();
+  scitbx::mat3<double> getS();
+  void update(double norm_s0_,
+              scitbx::vec3<double> mu_,
+              scitbx::af::shared<scitbx::vec3<double>> dmu_,
+              scitbx::mat3<double> S_,
+              scitbx::af::shared<scitbx::mat3<double>> dS_);
 
 private:
   scitbx::vec3<double> mu{};
@@ -86,7 +92,7 @@ public:
   RefinerData(const dxtbx::model::Experiment &experiment,
               dials::af::reflection_table &reflections);
   RefinerData(scitbx::vec3<double> s0,
-              Detector& detector,
+              Detector &detector,
               scitbx::af::shared<scitbx::vec3<double>> sp,
               scitbx::af::shared<cctbx::miller::index<>> h,
               scitbx::af::shared<double> ctot,
@@ -100,7 +106,7 @@ public:
   scitbx::af::shared<scitbx::vec2<double>> get_mobs_array();
   scitbx::af::shared<scitbx::mat2<double>> get_Sobs_array();
   scitbx::af::shared<size_t> get_panel_ids();
-  Detector& get_detector();
+  Detector &get_detector();
 
 private:
   scitbx::vec3<double> s0;
@@ -110,7 +116,7 @@ private:
   scitbx::af::shared<scitbx::vec2<double>> mobs_array;
   scitbx::af::shared<scitbx::mat2<double>> Sobs_array;
   scitbx::af::shared<size_t> panel_ids;
-  Detector& detector;
+  Detector &detector;
 };
 
 class ReflectionLikelihood {
@@ -132,6 +138,7 @@ public:
   scitbx::af::versa<double, scitbx::af::c_grid<2>> fisher_information();
 
 private:
+  ModelState &model;
   ReflectionModelState modelstate;
   Detector &detector;
   scitbx::vec3<double> s0;
@@ -142,12 +149,12 @@ private:
   scitbx::vec2<double> mobs;
   scitbx::mat2<double> sobs;
   size_t panel_id;
-  scitbx::mat3<double> R {};
-  scitbx::mat3<double> S {};
-  scitbx::af::shared<scitbx::mat3<double>> dS {};
-  scitbx::vec3<double> mu {};
-  scitbx::af::shared<scitbx::vec3<double>> dmu {};
-  ConditionalDistribution2 conditional;
+  scitbx::mat3<double> R{};
+  scitbx::mat3<double> S{};
+  scitbx::af::shared<scitbx::mat3<double>> dS{};
+  scitbx::vec3<double> mu{};
+  scitbx::af::shared<scitbx::vec3<double>> dmu{};
+  ConditionalDistribution2 conditional{};
 };
 
 class MLTarget {
@@ -191,7 +198,7 @@ namespace dials { namespace algorithms { namespace boost_python {
 
     class_<ReflectionLikelihood>("ReflectionLikelihood", no_init)
       .def(init<ModelState &,
-                Detector&,
+                Detector &,
                 scitbx::vec3<double>,
                 scitbx::vec3<double>,
                 cctbx::miller::index<>,
