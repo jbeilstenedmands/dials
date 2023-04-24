@@ -46,19 +46,15 @@ inline scitbx::vec2<double> compute_dmbar(const scitbx::mat3<double> &S,
 inline scitbx::mat2<double> compute_dSbar(const scitbx::mat3<double> &S,
                                           const scitbx::mat3<double> &dS) {
   scitbx::mat2<double> A{dS[0], dS[1], dS[3], dS[4]};
-  std::cout << A[0] << ' ' << A[1] << ' ' << A[2] << ' ' << A[3] << std::endl;
   double B_mult = dS[8] / (S[8] * S[8]);
   scitbx::mat2<double> B{S[2] * S[6] * B_mult,
                          S[2] * S[7] * B_mult,
                          S[5] * S[6] * B_mult,
                          S[5] * S[7] * B_mult};
-  std::cout << B[0] << ' ' << B[1] << ' ' << B[2] << ' ' << B[3] << std::endl;
   scitbx::mat2<double> C{
     S[2] * dS[6] / S[8], S[2] * dS[7] / S[8], S[5] * dS[6] / S[8], S[5] * dS[7] / S[8]};
-  std::cout << C[0] << ' ' << C[1] << ' ' << C[2] << ' ' << C[3] << std::endl;
   scitbx::mat2<double> D{
     dS[2] * S[6] / S[8], dS[2] * S[7] / S[8], dS[5] * S[6] / S[8], dS[5] * S[7] / S[8]};
-  std::cout << D[0] << ' ' << D[1] << ' ' << D[2] << ' ' << D[3] << std::endl;
   return A + B - (C + D);
 }
 ConditionalDistribution2::ConditionalDistribution2() {}
@@ -408,18 +404,8 @@ scitbx::af::shared<double> ReflectionLikelihood::first_derivatives() {
     conditional.first_derivatives_of_mean();
   scitbx::mat2<double> Sbar = conditional.sigma();
   scitbx::vec2<double> mubar = conditional.mean();
-  std::cout << Sbar[0] << ' ' << Sbar[1] << ' ' << Sbar[2] << ' ' << Sbar[3]
-            << std::endl;
-  std::cout << mubar[0] << ' ' << mubar[1] << std::endl;
-  for (int i = 0; i < dSbar.size(); ++i) {
-    std::cout << dSbar[i][0] << ' ' << dSbar[i][1] << ' ' << dSbar[i][2] << ' '
-              << dSbar[i][3] << std::endl;
-  }
-  for (int i = 0; i < dmBar.size(); ++i) {
-    std::cout << dmBar[i][0] << ' ' << dmBar[i][1] << std::endl;
-  }
   int n_param = dSbar.size();
-  double S22_inv = 1 / S[8];
+  double S22_inv = 1.0 / S[8];
   scitbx::mat2<double> Sbar_inv = Sbar.inverse();
   double epsilon = norm_s0 - mu[2];
   scitbx::vec2<double> c_d = mobs - mubar;
@@ -427,7 +413,7 @@ scitbx::af::shared<double> ReflectionLikelihood::first_derivatives() {
   scitbx::mat2<double> cdcdT(
     pow(c_d[0], 2), c_d[0] * c_d[1], c_d[0] * c_d[1], pow(c_d[1], 2));
   scitbx::mat2<double> V2 = I - (Sbar_inv * (sobs + cdcdT));
-  scitbx::af::shared<double> V_vec(n_param, 0);
+  scitbx::af::shared<double> V_vec(n_param, 0.0);
   for (int i = 0; i < n_param; ++i) {
     scitbx::mat2<double> Vvec = Sbar_inv * dSbar[i];
     V_vec[i] =
@@ -435,22 +421,18 @@ scitbx::af::shared<double> ReflectionLikelihood::first_derivatives() {
   }
   for (int i = 0; i < n_param; ++i) {
     V_vec[i] += ctot
-                * (S22_inv * dS[i][8] * (1 - (S22_inv * pow(epsilon, 2)))
+                * (S22_inv * dS[i][8] * (1.0 - (S22_inv * pow(epsilon, 2)))
                    + (2 * S22_inv * epsilon * -1.0 * dmu[i][2]));
   }
   for (int i = 0; i < n_param; ++i) {
-    scitbx::mat2<double> Wvec(c_d[0] * dmBar[i][0],
-                              c_d[0] * dmBar[i][1],
-                              c_d[1] * dmBar[i][0],
-                              c_d[1] * dmBar[i][1]);
-    V_vec[i] -= 2.0 * ctot
-                * (Wvec[0] * Sbar_inv[0] + Wvec[1] * Sbar_inv[2] + Wvec[2] * Sbar_inv[1]
-                   + Wvec[3] * Sbar_inv[3]);
+    V_vec[i] -=
+      2.0 * ctot
+      * ((c_d[0] * dmBar[i][0] * Sbar_inv[0]) + (c_d[0] * dmBar[i][1] * Sbar_inv[2])
+         + (c_d[1] * dmBar[i][0] * Sbar_inv[1]) + (c_d[1] * dmBar[i][1] * Sbar_inv[3]));
   }
   for (int i = 0; i < V_vec.size(); ++i) {
-    std::cout << V_vec[i] << std::endl;
+    V_vec[i] *= -0.5;
   }
-  DIALS_ASSERT(0);
   return V_vec;
 }
 
@@ -561,7 +543,6 @@ scitbx::af::shared<double> MLTarget::first_derivatives() {
   int n1 = model.n_active_parameters();
   scitbx::af::shared<double> derivatives(n1, 0);
   for (ReflectionLikelihood d : data) {
-    std::cout << std::string("adding next deriv") << std::endl;
     scitbx::af::shared<double> di = d.first_derivatives();
     for (size_t i = 0; i < di.size(); ++i) {
       derivatives[i] += di[i];

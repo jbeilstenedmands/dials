@@ -356,7 +356,6 @@ void ModelState::set_active_parameters(scitbx::af::shared<double> parameters) {
   DIALS_ASSERT(parameters.size() == n_active_parameters());
   if (!fix_orientation) {
     size_t nU = U_parameterisation.get_params().size();
-    std::cout << nU << std::endl;
     scitbx::af::shared<double> new_U(nU, 0.0);
     for (size_t i = 0; i < nU; ++i) {
       new_U[i] = parameters[i + n_param];
@@ -366,7 +365,6 @@ void ModelState::set_active_parameters(scitbx::af::shared<double> parameters) {
   }
   if (!fix_unit_cell) {
     size_t nB = B_parameterisation.get_params().size();
-    std::cout << nB << std::endl;
     scitbx::af::shared<double> new_B(nB, 0.0);
     for (size_t i = 0; i < nB; ++i) {
       new_B[i] = parameters[i + n_param];
@@ -376,7 +374,6 @@ void ModelState::set_active_parameters(scitbx::af::shared<double> parameters) {
   }
   if (!fix_mosaic_spread) {
     size_t nM = M_parameterisation.get_params().size();
-    std::cout << nM << std::endl;
     scitbx::af::shared<double> new_M(nM, 0.0);
     for (size_t i = 0; i < nM; ++i) {
       new_M[i] = parameters[i + n_param];
