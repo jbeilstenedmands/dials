@@ -311,7 +311,9 @@ namespace dials { namespace algorithms { namespace boost_python {
       mat3<double> Q = compute_change_of_basis_operation2(s0, r);
       vec3<double> zaxis(0, 0, 1);
       DIALS_ASSERT(std::abs(((Q * r.normalize()) * zaxis) - 1) < TINY);
-      return (Q.transpose() * sigma_ * Q);
+      double norm_r = r.length();
+      mat3<double> A(norm_r, 0, 0, 0, norm_r, 0, 0, 0, 1.0);
+      return (Q.transpose() * A * sigma_ * Q);
     }
 
     mat3<double> sigma_;
@@ -523,7 +525,9 @@ namespace dials { namespace algorithms { namespace boost_python {
       mat3<double> Q = compute_change_of_basis_operation2(s0, r);
       vec3<double> zaxis(0, 0, 1);
       DIALS_ASSERT(std::abs(((Q * r.normalize()) * zaxis) - 1) < TINY);
-      return (Q.transpose() * sigma_ * Q);
+      double norm_r = r.length();
+      mat3<double> A(norm_r, 0, 0, 0, norm_r, 0, 0, 0, 1.0);
+      return (Q.transpose() * A * sigma_ * Q);
     }
 
     mat3<double> sigma_;
@@ -746,7 +750,9 @@ namespace dials { namespace algorithms { namespace boost_python {
       mat3<double> Q = compute_change_of_basis_operation2(s0, r);
       vec3<double> zaxis(0, 0, 1);
       DIALS_ASSERT(std::abs(((Q * r.normalize()) * zaxis) - 1) < TINY);
-      return (Q.transpose() * sigma_ * Q);
+      double norm_r = r.length();
+      mat3<double> A(norm_r, 0, 0, 0, norm_r, 0, 0, 0, 1.0);
+      return (Q.transpose() * A * sigma_ * Q);
     }
 
     mat3<double> sigma_;

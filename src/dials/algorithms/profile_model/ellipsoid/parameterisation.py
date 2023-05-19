@@ -655,7 +655,11 @@ class ReflectionModelState(object):
                 q2 = np.cross(norm_r, q1)
                 q2 /= norm(q2)
                 self._Q = np.array([q1, q2, norm_r], dtype=np.float64).reshape(3, 3)
-            self._sigma = np.matmul(np.matmul(self._Q.T, M), self._Q)
+            normr = norm(self._r)
+            A = np.array(
+                [[normr, 0, 0], [0, normr, 0], [0, 0, 1]], dtype=np.float64
+            ).reshape(3, 3)
+            self._sigma = np.matmul(np.matmul(self._Q.T, np.matmul(A, M)), self._Q)
         else:
             self._sigma = M  #
 
@@ -703,7 +707,12 @@ class ReflectionModelState(object):
             dM_dp = self.state.dM_dp
             n_M_params = dM_dp.shape[0]  # state.M_params.size
             if state.is_mosaic_spread_angular:
-                QTMQ = np.einsum("ij,mjk,kl->ilm", self._Q.T, dM_dp, self._Q)
+                normr = norm(self._r)
+                A = np.array(
+                    [[normr, 0, 0], [0, normr, 0], [0, 0, 1]], dtype=np.float64
+                ).reshape(3, 3)
+                AdM = np.einsum("ij,mjk->mik", A, dM_dp)
+                QTMQ = np.einsum("ij,mjk,kl->ilm", self._Q.T, AdM, self._Q)
                 self._ds_dp[:, :, n_tot : n_tot + n_M_params] = QTMQ
             else:
                 self._ds_dp[:, :, n_tot : n_tot + n_M_params] = np.transpose(
