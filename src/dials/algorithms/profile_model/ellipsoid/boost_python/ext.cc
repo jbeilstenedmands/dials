@@ -146,7 +146,7 @@ namespace dials { namespace algorithms { namespace boost_python {
      * @param h The list of miller indices
      * @returns The reflection table
      */
-    af::reflection_table predict(af::const_ref<cctbx::miller::index<> > h) const {
+    af::reflection_table predict(af::const_ref<cctbx::miller::index<>> h) const {
       // Get the beam and detector
       const double TINY = 1e-7;
       DIALS_ASSERT(experiment_.get_beam() != NULL);
@@ -162,12 +162,12 @@ namespace dials { namespace algorithms { namespace boost_python {
       vec3<double> s0 = experiment_.get_beam()->get_s0();
 
       // Initialise some arrays
-      af::shared<cctbx::miller::index<> > miller_indices;
+      af::shared<cctbx::miller::index<>> miller_indices;
       af::shared<bool> entering;
-      af::shared<vec3<double> > s1_list;
-      af::shared<vec3<double> > s2_list;
-      af::shared<vec3<double> > xyzcalpx;
-      af::shared<vec3<double> > xyzcalmm;
+      af::shared<vec3<double>> s1_list;
+      af::shared<vec3<double>> s2_list;
+      af::shared<vec3<double>> xyzcalpx;
+      af::shared<vec3<double>> xyzcalmm;
       af::shared<std::size_t> panel_list;
       af::shared<int> experiment_id;
 
@@ -319,6 +319,37 @@ namespace dials { namespace algorithms { namespace boost_python {
     mat3<double> sigma_;
   };
 
+  class PredictorAngularMixed : public PredictorBase {
+  public:
+    /**
+     * Initialise the class
+     * @param experiment The experiment
+     * @param sigma The covariance matrix
+     */
+    PredictorAngularMixed(Experiment experiment,
+                          mat3<double> sigma,
+                          double probability,
+                          mat3<double> sigma_s)
+        : PredictorBase(experiment, probability), sigma_(sigma), sigma_s_(sigma_s) {}
+
+  protected:
+    /**
+     * Get the sigma for a reflection
+     */
+    virtual mat3<double> get_sigma(vec3<double> s0, vec3<double> r) const {
+      const double TINY = 1e-7;
+      mat3<double> Q = compute_change_of_basis_operation2(s0, r);
+      vec3<double> zaxis(0, 0, 1);
+      DIALS_ASSERT(std::abs(((Q * r.normalize()) * zaxis) - 1) < TINY);
+      double r_scale = std::pow(r.length(), 2);
+      mat3<double> A(r_scale, 0, 0, 0, r_scale, 0, 0, 0, 1.0);
+      return (Q.transpose() * A * sigma_ * Q) + sigma_s_;
+    }
+
+    mat3<double> sigma_;
+    mat3<double> sigma_s_;
+  };
+
   /**
    * A class to compute the bounding box
    */
@@ -342,8 +373,8 @@ namespace dials { namespace algorithms { namespace boost_python {
      */
     void compute(af::reflection_table reflections) const {
       // Get some array from the reflection table
-      af::const_ref<vec3<double> > s1 = reflections["s1"];
-      af::const_ref<vec3<double> > s2 = reflections["s2"];
+      af::const_ref<vec3<double>> s1 = reflections["s1"];
+      af::const_ref<vec3<double>> s2 = reflections["s2"];
       af::const_ref<std::size_t> panel = reflections["panel"];
       af::ref<int6> bbox = reflections["bbox"];
 
@@ -534,6 +565,43 @@ namespace dials { namespace algorithms { namespace boost_python {
   };
 
   /**
+   * The bbox calculator for angular profile models
+   */
+  class BBoxCalculatorAngularMixed : public BBoxCalculatorBase {
+  public:
+    /**
+     * Initialise the class
+     * @param experiment The experiment
+     * @param sigma The covariance matrix
+     */
+    BBoxCalculatorAngularMixed(Experiment experiment,
+                               mat3<double> sigma_a,
+                               double probability,
+                               int border,
+                               mat3<double> sigma_s)
+        : BBoxCalculatorBase(experiment, probability, border),
+          sigma_(sigma_a),
+          sigma_s_(sigma_s) {}
+
+  protected:
+    /**
+     * Get the sigma for a reflection
+     */
+    virtual mat3<double> get_sigma(vec3<double> s0, vec3<double> r) const {
+      const double TINY = 1e-7;
+      mat3<double> Q = compute_change_of_basis_operation2(s0, r);
+      vec3<double> zaxis(0, 0, 1);
+      DIALS_ASSERT(std::abs(((Q * r.normalize()) * zaxis) - 1) < TINY);
+      double r_scale = std::pow(r.length(), 2);
+      mat3<double> A(r_scale, 0, 0, 0, r_scale, 0, 0, 0, 1.0);
+      return (Q.transpose() * A * sigma_ * Q) + sigma_s_;
+    }
+
+    mat3<double> sigma_;
+    mat3<double> sigma_s_;
+  };
+
+  /**
    * A class to compute the reflection mask
    */
   class MaskCalculatorBase {
@@ -555,9 +623,9 @@ namespace dials { namespace algorithms { namespace boost_python {
      */
     void compute(af::reflection_table reflections) const {
       // Get some array from the reflection table
-      af::const_ref<vec3<double> > s1 = reflections["s1"];
-      af::const_ref<vec3<double> > s2 = reflections["s2"];
-      af::ref<Shoebox<> > sbox = reflections["shoebox"];
+      af::const_ref<vec3<double>> s1 = reflections["s1"];
+      af::const_ref<vec3<double>> s2 = reflections["s2"];
+      af::ref<Shoebox<>> sbox = reflections["shoebox"];
 
       // Compute quantile
       double D = chisq_quantile(2, probability_);
@@ -639,7 +707,7 @@ namespace dials { namespace algorithms { namespace boost_python {
       mat2<double> Sbar_inv = Sbar.inverse();
 
       // Get the mask array
-      af::ref<int, af::c_grid<3> > mask = sbox.mask.ref();
+      af::ref<int, af::c_grid<3>> mask = sbox.mask.ref();
 
       // Get the bounding box
       int x0 = sbox.bbox[0];
@@ -758,6 +826,39 @@ namespace dials { namespace algorithms { namespace boost_python {
     mat3<double> sigma_;
   };
 
+  class MaskCalculatorAngularMixed : public MaskCalculatorBase {
+  public:
+    /**
+     * Initialise the class
+     * @param experiment The experiment
+     * @param sigma The covariance matrix
+     */
+    MaskCalculatorAngularMixed(Experiment experiment,
+                               mat3<double> sigma,
+                               double probability,
+                               mat3<double> sigma_s)
+        : MaskCalculatorBase(experiment, probability),
+          sigma_(sigma),
+          sigma_s_(sigma_s) {}
+
+  protected:
+    /**
+     * Get the sigma for a reflection
+     */
+    virtual mat3<double> get_sigma(vec3<double> s0, vec3<double> r) const {
+      const double TINY = 1e-7;
+      mat3<double> Q = compute_change_of_basis_operation2(s0, r);
+      vec3<double> zaxis(0, 0, 1);
+      DIALS_ASSERT(std::abs(((Q * r.normalize()) * zaxis) - 1) < TINY);
+      double r_scale = std::pow(r.length(), 2);
+      mat3<double> A(r_scale, 0, 0, 0, r_scale, 0, 0, 0, 1.0);
+      return (Q.transpose() * A * sigma_ * Q) + sigma_s_;
+    }
+
+    mat3<double> sigma_;
+    mat3<double> sigma_s_;
+  };
+
   BOOST_PYTHON_MODULE(dials_algorithms_profile_model_ellipsoid_ext) {
     def("chisq_quantile", &chisq_quantile);
     def("chisq_pdf", &chisq_pdf);
@@ -765,33 +866,44 @@ namespace dials { namespace algorithms { namespace boost_python {
     class_<PredictorBase>("PredictorBase", no_init)
       .def("predict", &PredictorBase::predict);
 
-    class_<PredictorSimple, bases<PredictorBase> >("PredictorSimple", no_init)
+    class_<PredictorSimple, bases<PredictorBase>>("PredictorSimple", no_init)
       .def(init<Experiment, mat3<double>, double>());
 
-    class_<PredictorAngular, bases<PredictorBase> >("PredictorAngular", no_init)
+    class_<PredictorAngular, bases<PredictorBase>>("PredictorAngular", no_init)
       .def(init<Experiment, mat3<double>, double>());
+
+    class_<PredictorAngularMixed, bases<PredictorBase>>("PredictorAngularMixed",
+                                                        no_init)
+      .def(init<Experiment, mat3<double>, double, mat3<double>>());
 
     class_<BBoxCalculatorBase>("BBoxCalculatorBase", no_init)
       .def("compute", &BBoxCalculatorBase::compute);
 
-    class_<BBoxCalculatorSimple, bases<BBoxCalculatorBase> >("BBoxCalculatorSimple",
+    class_<BBoxCalculatorSimple, bases<BBoxCalculatorBase>>("BBoxCalculatorSimple",
+                                                            no_init)
+      .def(init<Experiment, mat3<double>, double, int>());
+
+    class_<BBoxCalculatorAngular, bases<BBoxCalculatorBase>>("BBoxCalculatorAngular",
                                                              no_init)
       .def(init<Experiment, mat3<double>, double, int>());
 
-    class_<BBoxCalculatorAngular, bases<BBoxCalculatorBase> >("BBoxCalculatorAngular",
-                                                              no_init)
-      .def(init<Experiment, mat3<double>, double, int>());
+    class_<BBoxCalculatorAngularMixed, bases<BBoxCalculatorBase>>(
+      "BBoxCalculatorAngularMixed", no_init)
+      .def(init<Experiment, mat3<double>, double, int, mat3<double>>());
 
     class_<MaskCalculatorBase>("MaskCalculatorBase", no_init)
       .def("compute", &MaskCalculatorBase::compute);
 
-    class_<MaskCalculatorSimple, bases<MaskCalculatorBase> >("MaskCalculatorSimple",
-                                                             no_init)
+    class_<MaskCalculatorSimple, bases<MaskCalculatorBase>>("MaskCalculatorSimple",
+                                                            no_init)
       .def(init<Experiment, mat3<double>, double>());
 
-    class_<MaskCalculatorAngular, bases<MaskCalculatorBase> >("MaskCalculatorAngular",
-                                                              no_init)
+    class_<MaskCalculatorAngular, bases<MaskCalculatorBase>>("MaskCalculatorAngular",
+                                                             no_init)
       .def(init<Experiment, mat3<double>, double>());
+    class_<MaskCalculatorAngularMixed, bases<MaskCalculatorBase>>(
+      "MaskCalculatorAngularMixed", no_init)
+      .def(init<Experiment, mat3<double>, double, mat3<double>>());
   }
 
 }}}  // namespace dials::algorithms::boost_python

@@ -12,14 +12,18 @@ from scitbx.linalg import eigensystem, l_l_transpose_cholesky_decomposition_in_p
 
 from dials.algorithms.profile_model.ellipsoid import (
     BBoxCalculatorAngular,
+    BBoxCalculatorAngularMixed,
     BBoxCalculatorSimple,
     MaskCalculatorAngular,
+    MaskCalculatorAngularMixed,
     MaskCalculatorSimple,
     PredictorAngular,
+    PredictorAngularMixed,
     PredictorSimple,
 )
 from dials.algorithms.profile_model.ellipsoid.parameterisation import (
     Angular2MosaicityParameterisation,
+    Angular4MixedMosaicityParameterisation,
     Angular4MosaicityParameterisation,
     Simple1MosaicityParameterisation,
     Simple6MosaicityParameterisation,
@@ -32,7 +36,7 @@ phil_scope = parse(
     """
 rlp_mosaicity {
 
-    model = simple1 simple6 angular2 *angular4
+    model = simple1 simple6 angular2 *angular4 angular4mixed
     .type = choice
 
 }
@@ -145,6 +149,8 @@ class EllipsoidProfileModel(ProfileModelExt):
             return cls(Angular2ProfileModel.from_sigma_d(sigma_d))
         elif model == "angular4":
             return cls(Angular4ProfileModel.from_sigma_d(sigma_d))
+        elif model == "angular4mixed":
+            return cls(Angular4MixedProfileModel.from_sigma_d(sigma_d))
 
         raise RuntimeError(f"Unknown profile model: {model}")
 
@@ -158,6 +164,8 @@ class EllipsoidProfileModel(ProfileModelExt):
             return cls(Angular2ProfileModel.from_dict(d))
         if d["parameterisation"] == "angular4":
             return cls(Angular4ProfileModel.from_dict(d))
+        if d["parameterisation"] == "angular4mixed":
+            return cls(Angular4MixedProfileModel.from_dict(d))
         raise RuntimeError(
             f"Unknown profile model parameterisation: {d['parameterisation']}"
         )
@@ -615,6 +623,169 @@ class Angular4ProfileModel(AngularProfileModelBase):
 
         # Setup the parameters
         return Class.from_params(flex.double((LL[0], LL[1], LL[2], LL[5])))
+
+
+class AngularMixedProfileModelBase(ProfileModelBase):
+    """
+    Class to store profile model
+
+    """
+
+    def sigma_s(self):
+        return self.parameterisation().sigma_s()
+
+    def sigma_for_reflection(self, s0, r):
+        """
+        Sigma for a reflection
+
+        """
+        Q = compute_change_of_basis_operation(s0, r)
+        sigma = np.matmul(np.matmul(Q.T, np.array(self.sigma()).reshape(3, 3)), Q)
+        return sigma
+
+    def predict_reflections(
+        self, experiments, miller_indices, probability=FULL_PARTIALITY
+    ):
+        """
+        Predict the reflections
+
+        """
+        predictor = PredictorAngularMixed(
+            experiments[0],
+            matrix.sqr(flumpy.from_numpy(self.sigma())),
+            probability,
+            matrix.sqr(flumpy.from_numpy(self.sigma_s())),
+        )
+        return predictor.predict(miller_indices)
+
+    def compute_bbox(self, experiments, reflections, probability=FULL_PARTIALITY):
+        """
+        Compute the bounding box
+
+        """
+        calculator = BBoxCalculatorAngularMixed(
+            experiments[0],
+            matrix.sqr(flumpy.from_numpy(self.sigma())),
+            probability,
+            4,
+            matrix.sqr(flumpy.from_numpy(self.sigma_s())),
+        )
+        calculator.compute(reflections)
+
+    def compute_mask(self, experiments, reflections, probability=FULL_PARTIALITY):
+        """
+        Compute the mask
+
+        """
+        calculator = MaskCalculatorAngularMixed(
+            experiments[0],
+            matrix.sqr(flumpy.from_numpy(self.sigma())),
+            probability,
+            matrix.sqr(flumpy.from_numpy(self.sigma_s())),
+        )
+        calculator.compute(reflections)
+
+    def compute_partiality(self, experiments, reflections):
+        """
+        Compute the partiality
+
+        """
+        s0 = np.array([experiments[0].beam.get_s0()], dtype=np.float64).reshape(3, 1)
+        s0_length = norm(s0)
+        num = reflections.size()
+        sigma = experiments[0].crystal.mosaicity.sigma()
+        sigma_s = self.sigma_s()
+        print(sigma)
+        print(sigma_s)
+        sigma = np.array(sigma).reshape(3, 3)
+        x, y, z = reflections["s2"].parts()
+        s2 = np.array([x, y, z])
+
+        r = s2 - s0
+        scale = norm(r) ** 2
+        S = np.array([[scale, 0.0, 0.0, 0.0, scale, 0.0, 0.0, 0.0, scale]]).reshape(
+            3, 3
+        )
+        Rs = compute_change_of_basis_operations(s0, s2)
+        Qs = compute_change_of_basis_operations(s0, r)
+        sigma_qs = np.einsum("mda,db,mbc->mac", Qs, S * sigma, Qs) + sigma_s.reshape(
+            1, 3, 3
+        )  # Q.T * sigma * Q
+        Ss = np.einsum("mil,mlj,mkj->mik", Rs, sigma_qs, Rs)  # R * sigma_q * R.T
+        mus = np.einsum("mij,jm->mi", Rs, s2)
+        eps = mus[:, 2] - s0_length
+        eps2 = np.square(eps)
+        S22 = Ss[:, 2, 2]
+        partiality = np.exp(-0.5 * eps2 / S22)
+        partiality_variance = eps2 * np.exp(eps2 / S22) / (num * S22)
+        # shortened versions of the original calculations below:
+        # var_eps = S22 / num  # FIXME Approximation
+        # S00 = S22  # FIXME
+        # partiality[k] = exp(-0.5 * eps * (1 / S22) * eps) * sqrt(S00 / S22)
+        # partiality_variance[k] = (
+        #    var_eps * (eps**2 / (S00 * S22)) * exp(eps**2 / S22)
+        # )
+
+        reflections["partiality"] = flumpy.from_numpy(partiality)
+        reflections["partiality.inv.variance"] = flumpy.from_numpy(partiality_variance)
+
+    @classmethod
+    def from_params(Class, params):
+        """
+        Create the class from some parameters
+
+        """
+        return Class(params)
+
+
+class Angular4MixedProfileModel(AngularMixedProfileModelBase):
+    """
+    Class to store profile model
+
+    """
+
+    name = "angular4mixed"
+
+    def parameterisation(self):
+        """
+        Get the parameterisation
+
+        """
+        return Angular4MixedMosaicityParameterisation(self.params)
+
+    @classmethod
+    def from_sigma_d(Class, sigma_d):
+        """
+        Create the profile model from sigma_d estimate
+
+        """
+        return Class.from_params(
+            np.array([sigma_d, 0, sigma_d, sigma_d, sigma_d], dtype=np.float64)
+        )
+
+    @classmethod
+    def from_sigma(Class, sigma):
+        """
+        Construct the profile model from the sigma
+
+        """
+
+        # Construct triangular matrix
+        LL = flex.double()
+        for j in range(3):
+            for i in range(j + 1):
+                LL.append(sigma[j * 3 + i])
+
+        # Do the cholesky decomposition
+        _ = l_l_transpose_cholesky_decomposition_in_place(LL)
+
+        # Check the sigma is as we expect
+        TINY = 1e-10
+        assert abs(LL[3] - 0) < TINY
+        assert abs(LL[4] - 0) < TINY
+
+        # Setup the parameters
+        return Class.from_params(flex.double((LL[0], LL[1], LL[2], LL[5], LL[5])))
 
 
 class ProfileModelFactory(object):

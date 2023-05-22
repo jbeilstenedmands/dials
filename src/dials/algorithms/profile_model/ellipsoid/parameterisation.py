@@ -33,6 +33,10 @@ class BaseParameterisation(ABC):
     def num_parameters(self):
         pass
 
+    @staticmethod
+    def is_mixed() -> bool:
+        return False
+
     @property
     def parameters(self) -> np.array:
         """
@@ -357,6 +361,97 @@ class Angular4MosaicityParameterisation(BaseParameterisation):
         return ds
 
 
+class Angular4MixedMosaicityParameterisation(BaseParameterisation):
+    """
+    A mosaicity parameterisation that uses 4 parameters to describe a
+    multivariate normal angular mosaic spread plus a spherical component.
+    Sigma is enforced as positive
+    definite by parameterising using the cholesky decomposition.
+    W = | w1  0  0  |
+        | w2 w3  0  |
+        | 0   0 w4 |
+    S = W*W^T
+    """
+
+    @staticmethod
+    def is_angular() -> bool:
+        return True
+
+    @staticmethod
+    def is_mixed() -> bool:
+        return True
+
+    @staticmethod
+    def num_parameters() -> int:
+        return 5
+
+    def sigma(self) -> np.array:
+        """
+        Compute the covariance matrix of the MVN from the parameters
+        """
+        # M = [[p[0], 0, 0], [p[1], p[2], 0], [0, 0, p[3]]]
+        # return np.matmul(M, M.T)
+        ab = self.params[0] * self.params[1]
+        aa = self.params[0] ** 2
+        bcsq = self.params[1] ** 2 + self.params[2] ** 2
+        dd = self.params[3] ** 2
+        return np.array([[aa, ab, 0.0], [ab, bcsq, 0], [0, 0, dd]], dtype=np.float64)
+
+    def sigma_s(self) -> np.array:
+        """
+        Compute the covariance matrix of the MVN from the parameters
+        """
+        p = self.params[4] ** 2
+        return np.array([[p, 0.0, 0.0], [0.0, p, 0], [0, 0, p]], dtype=np.float64)
+
+    def mosaicity(self) -> Dict:
+        """Three components of mosaicity"""
+        decomp = linalg.eigensystem.real_symmetric(
+            matrix.sqr(
+                flumpy.from_numpy(self.sigma() + self.sigma_s())
+            ).as_flex_double_matrix()
+        )
+        m = mosaicity_from_eigen_decomposition(decomp.values())
+        v = decomp.vectors()
+        mosaicities = {"radial": 0, "angular_0": 0, "angular_1": 0}
+        n_angular = 0
+        for i in range(3):
+            vec = (v[i * 3], v[(i * 3) + 1], v[(i * 3) + 2])
+            if vec == (0, 0, 1):
+                mosaicities["radial"] = m[i]
+            else:
+                mosaicities["angular_" + str(n_angular)] = m[i]
+                n_angular += 1
+        return mosaicities
+
+    def first_derivatives(self) -> np.array:
+        """
+        Compute the first derivatives of Sigma w.r.t the parameters
+        """
+        b1, b2, b3, b4 = self.params[0:4]
+
+        # d1 = [[2 * b1, b2, 0], [b2, 0, 0], [0, 0, 0]]
+        # d2 = [[0, b1, 0], [b1, 2 * b2, 0], [0, 0, 0]]
+        # d3 = [[0, 0, 0], [0, 2 * b3, 0], [0, 0, 0]]
+        # d4 = [[0, 0, 0], [0, 0, 0], [0, 0, 2 * b4]]
+        ds = np.array(
+            [
+                [2 * b1, b2, 0, b2, 0, 0, 0, 0, 0],
+                [0, b1, 0, b1, 2 * b2, 0, 0, 0, 0],
+                [0, 0, 0, 0, 2 * b3, 0, 0, 0, 0],
+                [0, 0, 0, 0, 0, 0, 0, 0, 2 * b4],
+            ],
+            dtype=np.float64,
+        ).reshape(4, 3, 3)
+        return ds
+
+    def first_derivatives_spherical(self) -> np.array:
+        b1 = self.params[4]
+        return np.array(
+            [[[2.0 * b1, 0, 0], [0, 2.0 * b1, 0], [0, 0, 2.0 * b1]]], dtype=np.float64
+        ).reshape(1, 3, 3)
+
+
 class ModelState(object):
     """
     A class to keep track of the model state
@@ -417,6 +512,10 @@ class ModelState(object):
         return self._M_parameterisation.is_angular()
 
     @property
+    def is_mosaic_spread_mixed(self) -> bool:
+        return self._M_parameterisation.is_mixed()
+
+    @property
     def is_wavelength_spread_fixed(self) -> bool:
         return self._is_wavelength_spread_fixed
 
@@ -438,6 +537,8 @@ class ModelState(object):
 
     @property
     def mosaicity_covariance_matrix(self) -> np.array:
+        if self.is_mosaic_spread_mixed:
+            return self._M_parameterisation.sigma() + self._M_parameterisation.sigma_s()
         return self._M_parameterisation.sigma()
 
     @property
@@ -520,6 +621,14 @@ class ModelState(object):
 
         """
         return self._M_parameterisation.first_derivatives()
+
+    @property
+    def dM_dp_s(self) -> np.array:
+        """
+        Get the first derivatives of M w.r.t its parameters
+
+        """
+        return self._M_parameterisation.first_derivatives_spherical()
 
     @property
     def dL_dp(self) -> flex.double:
@@ -660,6 +769,8 @@ class ReflectionModelState(object):
                 [[normr**2, 0, 0], [0, normr**2, 0], [0, 0, 1]], dtype=np.float64
             ).reshape(3, 3)
             self._sigma = np.matmul(np.matmul(self._Q.T, np.matmul(A, M)), self._Q)
+            if self.state.is_mosaic_spread_mixed:
+                self._sigma += self.state._M_parameterisation.sigma_s()
         else:
             self._sigma = M  #
 
@@ -709,7 +820,8 @@ class ReflectionModelState(object):
             if state.is_mosaic_spread_angular:
                 normr = norm(self._r)
                 A = np.array(
-                    [[norm**2, 0, 0], [0, normr**2, 0], [0, 0, 1]], dtype=np.float64
+                    [[normr**2, 0, 0], [0, normr**2, 0], [0, 0, 1]],
+                    dtype=np.float64,
                 ).reshape(3, 3)
                 AdM = np.einsum("ij,mjk->mik", A, dM_dp)
                 QTMQ = np.einsum("ij,mjk,kl->ilm", self._Q.T, AdM, self._Q)
@@ -719,6 +831,12 @@ class ReflectionModelState(object):
                     dM_dp, axes=(1, 2, 0)
                 )
             n_tot += n_M_params
+            if state.is_mosaic_spread_angular and state.is_mosaic_spread_mixed:
+                dM_dp_s = self.state.dM_dp_s
+                self._ds_dp[:, :, n_tot : n_tot + 1] = np.transpose(
+                    dM_dp_s, axes=(1, 2, 0)
+                )
+                n_tot += 1
         # Compute derivatives   w.r.t L parameters
         if not state.is_wavelength_spread_fixed:
             self._dl_dp[n_tot] = self.state.dL_dp[0]
