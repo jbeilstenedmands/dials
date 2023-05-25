@@ -447,6 +447,7 @@ def run_ellipsoid_refinement(
 
     # Construct the profile refiner data
     refiner_data = RefinerData.from_reflections(experiments[0], reflection_table)
+    profile.parameterisation.n_obs = len(refiner_data.h_list)
 
     # Do the refinement
     for _ in range(n_cycles):

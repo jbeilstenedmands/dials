@@ -195,6 +195,7 @@ class ProfileModelBase(object):
 
         """
         self.params = params
+        self._n_obs = None
 
     def sigma(self):
         """
@@ -202,6 +203,14 @@ class ProfileModelBase(object):
 
         """
         return self.parameterisation().sigma()
+
+    @property
+    def n_obs(self):
+        return self._n_obs
+
+    @n_obs.setter
+    def n_obs(self, n_obs_):
+        self._n_obs = n_obs_
 
     def update_model_state_parameters(self, state):
         """
@@ -236,12 +245,14 @@ class ProfileModelBase(object):
             "__id__": self.__class__.name,
             "parameters": params,
             "sigma": sigma.tolist(),
+            "n_obs": self._n_obs,
         }
 
     @classmethod
     def from_dict(cls, d):
         """Convert the model to a dictionary."""
         model = cls(d["parameters"])
+        model.n_obs = d["n_obs"]
         return model
 
     def mosaicity(self):
@@ -300,8 +311,8 @@ class SimpleProfileModelBase(ProfileModelBase):
         """
         s0 = np.array([experiments[0].beam.get_s0()], dtype=np.float64).reshape(3, 1)
         s0_length = norm(s0)
-        num = reflections.size()
-
+        n_obs = experiments[0].crystal.mosaicity.parameterisation.n_obs
+        assert n_obs is not None
         # Compute the marginal variance for the 000 reflection
         # S00 = experiments[0].crystal.mosaicity.sigma()[2, 2]
         ## need the min variance, so do decomposition
@@ -328,7 +339,7 @@ class SimpleProfileModelBase(ProfileModelBase):
             S22 = S[2, 2]
             mu2 = mu.flatten()[2]
             eps = s0_length - mu2
-            var_eps = S22 / num  # FIXME Approximation
+            var_eps = S22 / n_obs  # FIXME Approximation
             partiality[k] = exp(-0.5 * eps * (1 / S22) * eps) * sqrt(
                 S00 / S22
             )  # relative to max slice through RLP.
