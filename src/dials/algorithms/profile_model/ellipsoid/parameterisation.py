@@ -383,7 +383,7 @@ class Angular4MixedMosaicityParameterisation(BaseParameterisation):
 
     @staticmethod
     def num_parameters() -> int:
-        return 5
+        return 4
 
     def sigma(self) -> np.array:
         """
@@ -394,14 +394,14 @@ class Angular4MixedMosaicityParameterisation(BaseParameterisation):
         ab = self.params[0] * self.params[1]
         aa = self.params[0] ** 2
         bcsq = self.params[1] ** 2 + self.params[2] ** 2
-        dd = self.params[3] ** 2
-        return np.array([[aa, ab, 0.0], [ab, bcsq, 0], [0, 0, dd]], dtype=np.float64)
+        # dd = self.params[3] ** 2
+        return np.array([[aa, ab, 0.0], [ab, bcsq, 0], [0, 0, 0.0]], dtype=np.float64)
 
     def sigma_s(self) -> np.array:
         """
         Compute the covariance matrix of the MVN from the parameters
         """
-        p = self.params[4] ** 2
+        p = self.params[3] ** 2
         return np.array([[p, 0.0, 0.0], [0.0, p, 0], [0, 0, p]], dtype=np.float64)
 
     def mosaicity(self) -> Dict:
@@ -428,7 +428,7 @@ class Angular4MixedMosaicityParameterisation(BaseParameterisation):
         """
         Compute the first derivatives of Sigma w.r.t the parameters
         """
-        b1, b2, b3, b4 = self.params[0:4]
+        b1, b2, b3 = self.params[0:3]
 
         # d1 = [[2 * b1, b2, 0], [b2, 0, 0], [0, 0, 0]]
         # d2 = [[0, b1, 0], [b1, 2 * b2, 0], [0, 0, 0]]
@@ -436,17 +436,17 @@ class Angular4MixedMosaicityParameterisation(BaseParameterisation):
         # d4 = [[0, 0, 0], [0, 0, 0], [0, 0, 2 * b4]]
         ds = np.array(
             [
-                [2 * b1, b2, 0, b2, 0, 0, 0, 0, 0],
-                [0, b1, 0, b1, 2 * b2, 0, 0, 0, 0],
-                [0, 0, 0, 0, 2 * b3, 0, 0, 0, 0],
-                [0, 0, 0, 0, 0, 0, 0, 0, 2 * b4],
+                [[2 * b1, b2, 0], [b2, 0, 0], [0, 0, 0]],
+                [[0, b1, 0], [b1, 2 * b2, 0], [0, 0, 0]],
+                [[0, 0, 0], [0, 2 * b3, 0], [0, 0, 0]],
+                # [0, 0, 0, 0, 0, 0, 0, 0, 2 * b4],
             ],
             dtype=np.float64,
-        ).reshape(4, 3, 3)
+        )
         return ds
 
     def first_derivatives_spherical(self) -> np.array:
-        b1 = self.params[4]
+        b1 = self.params[3]
         return np.array(
             [[[2.0 * b1, 0, 0], [0, 2.0 * b1, 0], [0, 0, 2.0 * b1]]], dtype=np.float64
         ).reshape(1, 3, 3)
@@ -751,7 +751,7 @@ class ReflectionModelState(object):
 
     def _recalc_sigma(self):
         # Compute the covariance matrix
-        M = self.state.mosaicity_covariance_matrix
+        M = self.state._M_parameterisation.sigma()
         if self.state.is_mosaic_spread_angular:
             # Define rotation for W sigma components
             # check if r has actually been updated
@@ -769,8 +769,12 @@ class ReflectionModelState(object):
                 [[normr**2, 0, 0], [0, normr**2, 0], [0, 0, 1]], dtype=np.float64
             ).reshape(3, 3)
             self._sigma = np.matmul(np.matmul(self._Q.T, np.matmul(A, M)), self._Q)
+            # print(self._sigma)
             if self.state.is_mosaic_spread_mixed:
+                # print(self.state._M_parameterisation.sigma_s())
                 self._sigma += self.state._M_parameterisation.sigma_s()
+                # print(self._sigma)
+            # assert 0
         else:
             self._sigma = M  #
 

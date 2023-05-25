@@ -566,7 +566,7 @@ class FisherScoringMaximumLikelihoodBase(object):
 
     """
 
-    def __init__(self, x0, max_iter=1000, tolerance=1e-7):
+    def __init__(self, x0, max_iter=50, tolerance=1e-7):
         """
         Configure the algorithm
 
@@ -685,7 +685,7 @@ class FisherScoringMaximumLikelihood(FisherScoringMaximumLikelihoodBase):
         mobs_list,
         sobs_list,
         panel_ids,
-        max_iter=1000,
+        max_iter=50,
         tolerance=1e-7,
     ):
         """
@@ -1030,7 +1030,6 @@ class RefinerData(object):
             "Computing observed covariance for %d reflections" % len(reflections)
         )
         s0_length = norm(s0)
-
         sbox = reflections["shoebox"]
         for r, (panel_id, xyz) in enumerate(
             zip(reflections["panel"], reflections["xyzobs.px.value"])
@@ -1039,7 +1038,9 @@ class RefinerData(object):
             panel = experiment.detector[panel_id]
             sp = np.array(
                 panel.get_pixel_lab_coord(xyz[0:2]), dtype=np.float64
-            ).reshape(3, 1)
+            ).reshape(
+                3, 1
+            )  # in mm
             sp *= s0_length / norm(sp)
 
             # Compute change of basis

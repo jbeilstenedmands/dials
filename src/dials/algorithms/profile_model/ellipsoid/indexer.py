@@ -155,7 +155,6 @@ def _filter_reflections_based_on_centroid_distance(
     # get squared Mahalanobis distances
     # d2s = maha_dist_sq((Xres, Yres, Eres), T, S)
     d2s = maha_dist_sq((Xres, Yres), T, S)
-
     # Compute the cutoff
     mahasq_cutoff = chisq_quantile(2, outlier_probability)
 

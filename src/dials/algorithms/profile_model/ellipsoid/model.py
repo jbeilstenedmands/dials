@@ -7,7 +7,7 @@ from numpy.linalg import norm
 
 from dxtbx import flumpy
 from libtbx.phil import parse
-from scitbx import matrix
+from scitbx import linalg, matrix
 from scitbx.linalg import eigensystem, l_l_transpose_cholesky_decomposition_in_place
 
 from dials.algorithms.profile_model.ellipsoid import (
@@ -303,7 +303,15 @@ class SimpleProfileModelBase(ProfileModelBase):
         num = reflections.size()
 
         # Compute the marginal variance for the 000 reflection
-        S00 = experiments[0].crystal.mosaicity.sigma()[2, 2]
+        # S00 = experiments[0].crystal.mosaicity.sigma()[2, 2]
+        ## need the min variance, so do decomposition
+        eigen_decomposition = linalg.eigensystem.real_symmetric(
+            matrix.sqr(
+                experiments[0].crystal.mosaicity.sigma().flatten()
+            ).as_flex_double_matrix()
+        )
+        eigen_values = eigen_decomposition.values()
+        S00 = min(eigen_values)
         partiality = flex.double(reflections.size())
         partiality_variance = flex.double(reflections.size())
         for k, s2_vec in enumerate(reflections["s2"]):
@@ -321,7 +329,9 @@ class SimpleProfileModelBase(ProfileModelBase):
             mu2 = mu.flatten()[2]
             eps = s0_length - mu2
             var_eps = S22 / num  # FIXME Approximation
-            partiality[k] = exp(-0.5 * eps * (1 / S22) * eps) * sqrt(S00 / S22)
+            partiality[k] = exp(-0.5 * eps * (1 / S22) * eps) * sqrt(
+                S00 / S22
+            )  # relative to max slice through RLP.
             partiality_variance[k] = (
                 var_eps * (eps**2 / (S00 * S22)) * exp(eps**2 / S22)
             )
@@ -640,8 +650,12 @@ class AngularMixedProfileModelBase(ProfileModelBase):
 
         """
         Q = compute_change_of_basis_operation(s0, r)
-        sigma = np.matmul(np.matmul(Q.T, np.array(self.sigma()).reshape(3, 3)), Q)
-        return sigma
+        scale = norm(r) ** 2
+        S = np.array([[scale, 0.0, 0.0, 0.0, scale, 0.0, 0.0, 0.0, scale]]).reshape(
+            3, 3
+        )
+        sigma = np.matmul(np.matmul(Q.T, S * np.array(self.sigma()).reshape(3, 3)), Q)
+        return sigma + self.sigma_s()
 
     def predict_reflections(
         self, experiments, miller_indices, probability=FULL_PARTIALITY
@@ -695,8 +709,6 @@ class AngularMixedProfileModelBase(ProfileModelBase):
         num = reflections.size()
         sigma = experiments[0].crystal.mosaicity.sigma()
         sigma_s = self.sigma_s()
-        print(sigma)
-        print(sigma_s)
         sigma = np.array(sigma).reshape(3, 3)
         x, y, z = reflections["s2"].parts()
         s2 = np.array([x, y, z])
@@ -760,7 +772,7 @@ class Angular4MixedProfileModel(AngularMixedProfileModelBase):
 
         """
         return Class.from_params(
-            np.array([sigma_d, 0, sigma_d, sigma_d, sigma_d], dtype=np.float64)
+            np.array([sigma_d, 0, sigma_d, sigma_d], dtype=np.float64)
         )
 
     @classmethod
@@ -785,7 +797,7 @@ class Angular4MixedProfileModel(AngularMixedProfileModelBase):
         assert abs(LL[4] - 0) < TINY
 
         # Setup the parameters
-        return Class.from_params(flex.double((LL[0], LL[1], LL[2], LL[5], LL[5])))
+        return Class.from_params(flex.double((LL[0], LL[1], LL[2], LL[5])))
 
 
 class ProfileModelFactory(object):
