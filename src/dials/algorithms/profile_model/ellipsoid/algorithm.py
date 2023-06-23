@@ -165,6 +165,24 @@ def _compute_mask(
                             mask_new[0, jj, ii] |= (1 << 2) | (1 << 3)
 
 
+def prepare_bad(experiment, dont_integrate):
+    dont_integrate["s1_obs"] = _compute_beam_vector(experiment, dont_integrate)
+    dont_integrate["sp"] = flex.vec3_double([(0, 0, 0)] * dont_integrate.size())
+    panel_id = dont_integrate["panel"]
+
+    s0 = np.array([experiment.beam.get_s0()], dtype=np.float64).reshape(3, 1)
+    s0_length = norm(s0)
+    for i, (xyzobs, panel) in enumerate(
+        zip(dont_integrate["xyzobs.px.value"], panel_id)
+    ):
+        sp = experiment.detector[panel].get_pixel_lab_coord((xyzobs[0], xyzobs[1]))
+        sp = np.array(sp)
+        n = np.linalg.norm(sp)
+        sp = (sp / n) * s0_length
+        dont_integrate["sp"][i] = tuple(sp)
+    return dont_integrate
+
+
 def initial_integrator(experiments, reflection_table):
     """Performs an initial integration of strong spots"""
 
@@ -273,8 +291,50 @@ def final_integrator(
 
     profile = experiment.crystal.mosaicity
     profile.parameterisation.compute_partiality(experiments, reflection_table)
+    dont_pred_table = select_unobserved_reflections(reflection_table)
+    return reflection_table, dont_pred_table
 
-    return reflection_table
+
+def select_unobserved_reflections(
+    reflection_table, resolution_limit=None, Isigma_thresold=0.2
+):
+    strong = reflection_table.select(
+        reflection_table.get_flags(reflection_table.flags.strong)
+    )
+    logger.info("STRONG Partiality millerindex I sigma d")
+    logger.info(
+        "\n".join(
+            f"{r['partiality']:.4f} {r['miller_index']} {r['intensity.sum.value']:.4f} {r['intensity.sum.variance']**0.5:.4f} {r['d']:.2f}"
+            for r in strong.rows()
+        )
+    )
+    sel_table = reflection_table.select(
+        ~reflection_table.get_flags(reflection_table.flags.strong)
+    )
+    if not resolution_limit:
+        resolution_limit = 6.0
+    lowres = sel_table["d"] > resolution_limit
+
+    sel_table = sel_table.select(lowres)
+    sel_table = sel_table.select(sel_table.get_flags(sel_table.flags.integrated_sum))
+    logger.info(
+        f"UNOBSERVED: {sel_table.size()} not-strong reflections below {resolution_limit} angstrom"
+    )
+    dont_predict_sel = (
+        sel_table["intensity.sum.value"] / (sel_table["intensity.sum.variance"] ** 0.5)
+    ) < Isigma_thresold
+    dont_pred_table = sel_table.select(dont_predict_sel)
+    logger.info(
+        f"UNOBSERVED: {dont_pred_table.size()} low-res reflections with I/sigma < {Isigma_thresold}"
+    )
+    logger.info("Partiality millerindex I sigma")
+    logger.info(
+        "\n".join(
+            f"{r['partiality']:.4f} {r['miller_index']} {r['intensity.sum.value']:.4f} {r['intensity.sum.variance']**0.5:.4f}"
+            for r in dont_pred_table.rows()
+        )
+    )
+    return dont_pred_table
 
 
 def refine_profile(
@@ -283,7 +343,8 @@ def refine_profile(
     refiner_data,
     wavelength_spread_model="delta",
     max_iter=1000,
-    LL_tolerance=1e-36,
+    LL_tolerance=1e-6,
+    dont_integrate=None,
 ):
     """Do the profile refinement"""
     logger.info("\n" + "=" * 80 + "\nRefining profile parmameters")
@@ -298,7 +359,9 @@ def refine_profile(
     )
 
     # Create the refiner and refine
-    refiner = ProfileRefiner(state, refiner_data, max_iter, LL_tolerance)
+    refiner = ProfileRefiner(
+        state, refiner_data, max_iter, LL_tolerance, dont_integrate
+    )
     refiner.refine()
 
     # Set the profile parameters
@@ -318,6 +381,7 @@ def refine_crystal(
     wavelength_spread_model="delta",
     max_iter=1009,
     LL_tolerance=1e-6,
+    dont_integrate=None,
 ):
     """Do the crystal refinement"""
     if (fix_unit_cell is True) and (fix_orientation is True):
@@ -336,7 +400,9 @@ def refine_crystal(
     )
 
     # Create the refiner and refine
-    refiner = ProfileRefiner(state, refiner_data, max_iter, LL_tolerance)
+    refiner = ProfileRefiner(
+        state, refiner_data, max_iter, LL_tolerance, dont_integrate=dont_integrate
+    )
     refiner.refine()
 
     return refiner
@@ -411,6 +477,7 @@ def run_ellipsoid_refinement(
     n_cycles=3,
     max_iter=1000,
     LL_tolerance=1e-6,
+    dont_integrate=None,
 ):
     """Runs ellipsoid refinement on strong spots.
 
@@ -437,36 +504,71 @@ def run_ellipsoid_refinement(
     # Do the refinement
     for _ in range(n_cycles):
         # refine the profile
-        refiner = refine_profile(
-            experiments[0],
-            profile,
-            refiner_data,
-            wavelength_spread_model=wavelength_model,
-            max_iter=max_iter,
-            LL_tolerance=LL_tolerance,
-        )
-        if capture_progress:
-            # Save some data for plotting later.
-            output_data["refiner_output"]["history"].append(refiner.history)
-            output_data["refiner_output"]["correlation"] = refiner.correlation()
-            output_data["refiner_output"]["labels"] = refiner.labels()
+        if dont_integrate:
+            # refine the crystal
+            refinerc = refine_crystal(
+                experiments[0],
+                profile,
+                refiner_data,
+                fix_unit_cell=fix_unit_cell,
+                fix_orientation=fix_orientation,
+                wavelength_spread_model=wavelength_model,
+                max_iter=max_iter,
+                LL_tolerance=LL_tolerance,
+                dont_integrate=dont_integrate,
+            )
+            if capture_progress:
+                # Save some data for plotting later.
+                output_data["refiner_output"]["history"].append(refinerc.history)
+                output_data["refiner_output"]["correlation"] = refinerc.correlation()
+                output_data["refiner_output"]["labels"] = refinerc.labels()
+            refiner = refine_profile(
+                experiments[0],
+                profile,
+                refiner_data,
+                wavelength_spread_model=wavelength_model,
+                max_iter=max_iter,
+                LL_tolerance=LL_tolerance,
+                dont_integrate=dont_integrate,
+            )
+            if capture_progress:
+                # Save some data for plotting later.
+                output_data["refiner_output"]["history"].append(refiner.history)
+                output_data["refiner_output"]["correlation"] = refiner.correlation()
+                output_data["refiner_output"]["labels"] = refiner.labels()
+        else:
+            refiner = refine_profile(
+                experiments[0],
+                profile,
+                refiner_data,
+                wavelength_spread_model=wavelength_model,
+                max_iter=max_iter,
+                LL_tolerance=LL_tolerance,
+                dont_integrate=dont_integrate,
+            )
+            if capture_progress:
+                # Save some data for plotting later.
+                output_data["refiner_output"]["history"].append(refiner.history)
+                output_data["refiner_output"]["correlation"] = refiner.correlation()
+                output_data["refiner_output"]["labels"] = refiner.labels()
 
-        # refine the crystal
-        refinerc = refine_crystal(
-            experiments[0],
-            profile,
-            refiner_data,
-            fix_unit_cell=fix_unit_cell,
-            fix_orientation=fix_orientation,
-            wavelength_spread_model=wavelength_model,
-            max_iter=max_iter,
-            LL_tolerance=LL_tolerance,
-        )
-        if capture_progress:
-            # Save some data for plotting later.
-            output_data["refiner_output"]["history"].append(refinerc.history)
-            output_data["refiner_output"]["correlation"] = refinerc.correlation()
-            output_data["refiner_output"]["labels"] = refinerc.labels()
+            # refine the crystal
+            refinerc = refine_crystal(
+                experiments[0],
+                profile,
+                refiner_data,
+                fix_unit_cell=fix_unit_cell,
+                fix_orientation=fix_orientation,
+                wavelength_spread_model=wavelength_model,
+                max_iter=max_iter,
+                LL_tolerance=LL_tolerance,
+                dont_integrate=dont_integrate,
+            )
+            if capture_progress:
+                # Save some data for plotting later.
+                output_data["refiner_output"]["history"].append(refinerc.history)
+                output_data["refiner_output"]["correlation"] = refinerc.correlation()
+                output_data["refiner_output"]["labels"] = refinerc.labels()
 
     experiments[0].profile = profile
 

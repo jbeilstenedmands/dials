@@ -18,6 +18,7 @@ from dials.algorithms.profile_model.ellipsoid.algorithm import (
     initial_integrator,
     predict,
     predict_after_ellipsoid_refinement,
+    prepare_bad,
     run_ellipsoid_refinement,
 )
 from dials.algorithms.profile_model.ellipsoid.indexer import reindex
@@ -99,7 +100,7 @@ class EllipsoidIntegrator(SimpleIntegrator):
         for i in range(self.params.profile.ellipsoid.refinement.n_macro_cycles):
             try:
                 if i == 0:
-                    table, sigma_d = self.preprocess(
+                    table, sigma_d, _ = self.preprocess(
                         experiment, initial_table, self.params
                     )
                     self.collector.collect_after_preprocess(experiment, table)
@@ -108,7 +109,7 @@ class EllipsoidIntegrator(SimpleIntegrator):
                     initial_table = predict_after_ellipsoid_refinement(
                         experiment, initial_table
                     )
-                    table, sigma_d = self.preprocess(
+                    table, sigma_d, _ = self.preprocess(
                         experiment, initial_table, self.params
                     )
             except ToFewReflections as e:
@@ -144,7 +145,50 @@ class EllipsoidIntegrator(SimpleIntegrator):
         # do we want to add unmatched i.e. strong spots which weren't predicted?
         self.collector.collect_after_prediction(predicted, table)
 
-        predicted = self.integrate(experiment, predicted, sigma_d)
+        predicted, dont_integrate = self.integrate(experiment, predicted, sigma_d)
+        # initial = predicted.select(predicted.get_flags(predicted.flags.strong))
+        # now do refinement with constraints
+        for i in range(self.params.profile.ellipsoid.refinement.n_macro_cycles):
+            try:
+                if i == 0:
+                    table, sigma_d, ref_bad = self.preprocess(
+                        experiment, initial_table, self.params, dont_integrate
+                    )
+                    self.collector.collect_after_preprocess(experiment, table)
+                else:
+                    # update the predictions and s1 vectors using the latest models
+                    initial_table = predict_after_ellipsoid_refinement(
+                        experiment, initial_table
+                    )
+                    table, sigma_d, ref_bad = self.preprocess(
+                        experiment, initial_table, self.params, dont_integrate
+                    )
+            except ToFewReflections as e:
+                raise RuntimeError(e)
+            else:
+                try:
+                    experiment, table, refiner_output = self.refine(
+                        experiment,
+                        table,
+                        sigma_d,
+                        profile_model=self.params.profile.ellipsoid.rlp_mosaicity.model,
+                        fix_list=fix_list,
+                        n_cycles=self.params.profile.ellipsoid.refinement.n_cycles,
+                        capture_progress=isinstance(
+                            self.collector, EllipsoidOutputCollector
+                        ),
+                        max_iter=self.params.profile.ellipsoid.refinement.max_iter,
+                        LL_tolerance=self.params.profile.ellipsoid.refinement.LL_tolerance,
+                        dont_integrate=ref_bad,
+                    )
+                except BadSpotForIntegrationException as e:
+                    raise RuntimeError(e)
+                else:
+                    self.collector.collect_after_refinement(
+                        experiment, table, refiner_output["refiner_output"]["history"]
+                    )
+
+        predicted, dont_integrate = self.integrate(experiment, predicted, sigma_d)
         self.collector.collect_after_integration(experiment, predicted)
 
         return experiment, predicted, self.collector
@@ -153,7 +197,7 @@ class EllipsoidIntegrator(SimpleIntegrator):
     # workflows from the run method above using individual algorithm components
 
     @staticmethod
-    def preprocess(experiment, reflection_table, params):
+    def preprocess(experiment, reflection_table, params, dont_integrate=None):
         reference = reindex(
             reflection_table,
             experiment,
@@ -169,9 +213,20 @@ class EllipsoidIntegrator(SimpleIntegrator):
                     params.profile.ellipsoid.refinement.min_n_reflections,
                 )
             )
+        if dont_integrate:
+            reference_dont = reindex(
+                dont_integrate,
+                experiment,
+                outlier_probability=params.profile.ellipsoid.refinement.outlier_probability,
+                max_separation=params.profile.ellipsoid.refinement.max_separation,
+                fail_on_bad_index=params.profile.ellipsoid.indexing.fail_on_bad_index,
+            )
+            reference_dont = prepare_bad(experiment, reference_dont)
+        else:
+            reference_dont = None
         reference, sigma_d = initial_integrator(ExperimentList([experiment]), reference)
 
-        return reference, sigma_d
+        return reference, sigma_d, reference_dont
 
     @staticmethod
     def refine(
@@ -184,6 +239,7 @@ class EllipsoidIntegrator(SimpleIntegrator):
         capture_progress=False,
         max_iter=1000,
         LL_tolerance=1e-6,
+        dont_integrate=None,
     ):
         fix_unit_cell = False
         fix_orientation = False
@@ -204,6 +260,7 @@ class EllipsoidIntegrator(SimpleIntegrator):
             capture_progress=capture_progress,
             max_iter=max_iter,
             LL_tolerance=LL_tolerance,
+            dont_integrate=dont_integrate,
         )
         return expts[0], refls, output_data
 
@@ -225,12 +282,12 @@ class EllipsoidIntegrator(SimpleIntegrator):
 
     @staticmethod
     def integrate(experiment, reflection_table, sigma_d):
-        reflection_table = final_integrator(
+        reflection_table, dont_pred = final_integrator(
             ExperimentList([experiment]),
             reflection_table,
             sigma_d,
         )
-        return reflection_table
+        return reflection_table, dont_pred
 
 
 class EllipsoidOutputAggregator(OutputAggregator):

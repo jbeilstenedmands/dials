@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import random
 import textwrap
-from math import log, pi, sqrt
+from math import exp, log, pi, sqrt
 from typing import List
 
 import numpy as np
@@ -172,6 +172,92 @@ def rotate_mat3_double(R, A):
 
     """
     return np.einsum("ij,jkv,kl->ilv", R, A, R.T)
+
+
+class UnObsReflectionLikelihood(object):
+    def __init__(self, model, s0, sp, h):
+        modelstate = ReflectionModelState(model, s0, h)
+        self.modelstate = modelstate
+        self.s0 = s0.reshape(3, 1)
+        self.norm_s0 = norm(s0)
+        self.sp = np.array(sp).reshape(3, 1)
+        self.h = np.array([h], dtype=np.float64).reshape(3, 1)
+
+        self.R = compute_change_of_basis_operation(self.s0, self.sp)  # const
+        self.R_cctbx = matrix.sqr(flex.double(self.R.tolist()))
+        self.s2 = self.s0 + self.modelstate.get_r()
+        self.mu = np.matmul(self.R, self.s2)
+        self.S = np.matmul(
+            np.matmul(self.R, modelstate.mosaicity_covariance_matrix), self.R.T
+        )
+        # epsilon = self.norm_s0 - self.mu.flatten()[2]
+        # print(epsilon, self.S[2,2]**0.5)
+        self.dS = rotate_mat3_double(
+            self.R, modelstate.get_dS_dp()
+        )  # const when not refining mosaicity?
+        self.dmu = rotate_vec3_double(self.R, modelstate.get_dr_dp())
+        self.log_likelihood()
+
+    def update(self):
+
+        # The s2 vector
+        s2 = self.s0 + self.modelstate.get_r()
+        # Rotate the mean vector
+        self.mu = np.matmul(self.R, s2)
+
+        # Rotate the covariance matrix
+        if not self.modelstate.state.is_mosaic_spread_fixed:
+            self.S = np.matmul(
+                np.matmul(self.R, self.modelstate.mosaicity_covariance_matrix), self.R.T
+            )  # const when not refining mosaicity
+
+        # Rotate the first derivative matrices
+        if not self.modelstate.state.is_mosaic_spread_fixed:
+            self.dS = rotate_mat3_double(
+                self.R, self.modelstate.get_dS_dp()
+            )  # const when not refining mosaicity?
+
+        # Rotate the first derivative of s2
+        if (not self.modelstate.state.is_unit_cell_fixed) or not (
+            self.modelstate.state.is_orientation_fixed
+        ):
+            self.dmu = rotate_vec3_double(
+                self.R, self.modelstate.get_dr_dp()
+            )  # const when not refining uc/orientation?
+
+    def log_likelihood(self):
+
+        epsilon = self.norm_s0 - self.mu.flatten()[2]
+        x0 = 1.5 * (self.S[2, 2] ** 0.5)
+        # print(epsilon / self.S[2,2]**0.5)
+
+        # delta = abs(epsilon) - x0
+        # print(epsilon, x0, delta)
+
+        k = 50000.0
+        L = 50000.0
+        self.k = k
+        self.L = L
+        val = L / (1.0 + exp(-k * (epsilon - x0)))
+        val += L * (1.0 - (1.0 / (1.0 + exp(-k * (epsilon + x0)))))
+        val -= L
+        # print(epsilon / self.S[2,2]**0.5, val)
+        # print(epsilon / self.S[2,2]**0.5)
+        return val
+
+    def first_derivatives(self):
+        epsilon = self.norm_s0 - self.mu.flatten()[2]
+        x0 = 1.5 * (self.S[2, 2] ** 0.5)
+        e1 = exp(-1.0 * self.k * (epsilon - x0))
+        e2 = exp(-1.0 * self.k * (epsilon + x0))
+        dv_de = self.k * ((e1 / ((1.0 + e1) ** 2)) - (e2 / ((1.0 + e2) ** 2)))
+        dep = -self.dmu[2, :]
+        derivs = dv_de * dep
+
+        dv_dx0 = -1.0 * self.k * ((e1 / ((1.0 + e1) ** 2)) + (e2 / ((1.0 + e2) ** 2)))
+        s22 = self.S[2, 2] ** 0.5
+        derivs += dv_dx0 * self.dS[2, 2, :] / s22
+        return derivs * self.L
 
 
 class ReflectionLikelihood(object):
@@ -393,7 +479,16 @@ class ReflectionLikelihood(object):
 
 class MaximumLikelihoodTarget(object):
     def __init__(
-        self, model, s0, sp_list, h_list, ctot_list, mobs_list, sobs_list, panel_ids
+        self,
+        model,
+        s0,
+        sp_list,
+        h_list,
+        ctot_list,
+        mobs_list,
+        sobs_list,
+        panel_ids,
+        dont_integrate=None,
     ):
 
         # Check input
@@ -420,11 +515,22 @@ class MaximumLikelihoodTarget(object):
                     panel_ids[i],
                 )
             )
+        self.contraint_data = []
+        if dont_integrate:
+            for refl in dont_integrate.rows():
+                self.contraint_data.append(
+                    UnObsReflectionLikelihood(
+                        model, s0, refl["s2"], refl["miller_index"]
+                    )
+                )
 
     def update(self):
         for d in self.data:
             d.modelstate.update()  # update the ReflectionModelState
             d.update()  # update the ReflectionLikelihood
+        for d in self.contraint_data:
+            d.modelstate.update()  # update the ReflectionModelState
+            d.update()
 
     def mse(self):
         """
@@ -463,7 +569,12 @@ class MaximumLikelihoodTarget(object):
         The joint log likelihood
 
         """
-        return sum(d.log_likelihood() for d in self.data)
+        ll = sum(d.log_likelihood() for d in self.data)
+        if self.contraint_data:
+            ll2 = sum(d.log_likelihood() for d in self.contraint_data)
+            # print(ll2)
+            ll += ll2
+        return ll
 
     def jacobian(self):
         """
@@ -480,6 +591,9 @@ class MaximumLikelihoodTarget(object):
         dL = 0
         for d in self.data:
             dL += d.first_derivatives()
+        if self.contraint_data:
+            for d in self.contraint_data:
+                dL += d.first_derivatives()
         return dL
 
     def fisher_information(self):
@@ -683,6 +797,7 @@ class FisherScoringMaximumLikelihood(FisherScoringMaximumLikelihoodBase):
         max_iter=1000,
         tolerance=1e-7,
         LL_tolerance=1e-6,
+        dont_integrate=None,
     ):
         """
         Initialise the algorithm:
@@ -707,6 +822,7 @@ class FisherScoringMaximumLikelihood(FisherScoringMaximumLikelihoodBase):
         self.mobs_list = mobs_list
         self.sobs_list = sobs_list
         self.panel_ids = panel_ids
+        self.dont_integrate = dont_integrate
 
         # Store the parameter history
         self.history = []
@@ -720,6 +836,7 @@ class FisherScoringMaximumLikelihood(FisherScoringMaximumLikelihoodBase):
             self.mobs_list,
             self.sobs_list,
             self.panel_ids,
+            self.dont_integrate,
         )
 
         # Print initial
@@ -903,7 +1020,9 @@ class Refiner(object):
 
     """
 
-    def __init__(self, state, data, max_iter=1000, LL_tolerance=1e-6):
+    def __init__(
+        self, state, data, max_iter=1000, LL_tolerance=1e-6, dont_integrate=None
+    ):
         """
         Set the data and initial parameters
 
@@ -919,6 +1038,7 @@ class Refiner(object):
         self.history = []
         self.max_iter = max_iter
         self.LL_tolerance = LL_tolerance
+        self.dont_integrate = dont_integrate
 
     def refine(self):
         """
@@ -954,6 +1074,7 @@ class Refiner(object):
             self.panel_ids,
             max_iter=self.max_iter,
             LL_tolerance=self.LL_tolerance,
+            dont_integrate=self.dont_integrate,
         )
 
         # Solve the maximum likelihood equations
