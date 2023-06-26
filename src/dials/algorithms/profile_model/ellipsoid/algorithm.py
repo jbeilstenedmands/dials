@@ -291,12 +291,12 @@ def final_integrator(
 
     profile = experiment.crystal.mosaicity
     profile.parameterisation.compute_partiality(experiments, reflection_table)
-    dont_pred_table = select_unobserved_reflections(reflection_table)
+    dont_pred_table = select_unobserved_reflections(reflection_table, experiments[0])
     return reflection_table, dont_pred_table
 
 
 def select_unobserved_reflections(
-    reflection_table, resolution_limit=None, Isigma_thresold=0.2
+    reflection_table, experiment, resolution_limit=None, Isigma_thresold=0.2
 ):
     strong = reflection_table.select(
         reflection_table.get_flags(reflection_table.flags.strong)
@@ -324,6 +324,18 @@ def select_unobserved_reflections(
         sel_table["intensity.sum.value"] / (sel_table["intensity.sum.variance"] ** 0.5)
     ) < Isigma_thresold
     dont_pred_table = sel_table.select(dont_predict_sel)
+    from cctbx import crystal, miller
+
+    ms = miller.set(
+        crystal_symmetry=crystal.symmetry(
+            unit_cell=experiment.crystal.get_unit_cell(),
+            space_group=experiment.crystal.get_space_group(),
+            assert_is_compatible_unit_cell=False,
+        ),
+        indices=dont_pred_table["miller_index"],
+    )
+    centric = ms.centric_flags().data()
+    dont_pred_table = dont_pred_table.select(~centric)
     logger.info(
         f"UNOBSERVED: {dont_pred_table.size()} low-res reflections with I/sigma < {Isigma_thresold}"
     )
