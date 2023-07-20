@@ -291,8 +291,8 @@ def final_integrator(
 
     profile = experiment.crystal.mosaicity
     profile.parameterisation.compute_partiality(experiments, reflection_table)
-    dont_pred_table = select_unobserved_reflections(reflection_table, experiments[0])
-    return reflection_table, dont_pred_table
+
+    return reflection_table
 
 
 def select_unobserved_reflections(
@@ -517,23 +517,6 @@ def run_ellipsoid_refinement(
     for _ in range(n_cycles):
         # refine the profile
         if dont_integrate:
-            # refine the crystal
-            refinerc = refine_crystal(
-                experiments[0],
-                profile,
-                refiner_data,
-                fix_unit_cell=fix_unit_cell,
-                fix_orientation=fix_orientation,
-                wavelength_spread_model=wavelength_model,
-                max_iter=max_iter,
-                LL_tolerance=LL_tolerance,
-                dont_integrate=dont_integrate,
-            )
-            if capture_progress:
-                # Save some data for plotting later.
-                output_data["refiner_output"]["history"].append(refinerc.history)
-                output_data["refiner_output"]["correlation"] = refinerc.correlation()
-                output_data["refiner_output"]["labels"] = refinerc.labels()
             refiner = refine_profile(
                 experiments[0],
                 profile,
@@ -548,6 +531,19 @@ def run_ellipsoid_refinement(
                 output_data["refiner_output"]["history"].append(refiner.history)
                 output_data["refiner_output"]["correlation"] = refiner.correlation()
                 output_data["refiner_output"]["labels"] = refiner.labels()
+            # refine the crystal
+            refinerc = refine_crystal(
+                experiments[0],
+                profile,
+                refiner_data,
+                fix_unit_cell=fix_unit_cell,
+                fix_orientation=fix_orientation,
+                wavelength_spread_model=wavelength_model,
+                max_iter=max_iter,
+                LL_tolerance=LL_tolerance,
+                dont_integrate=dont_integrate,
+            )
+
         else:
             refiner = refine_profile(
                 experiments[0],

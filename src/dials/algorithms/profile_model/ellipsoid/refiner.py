@@ -234,8 +234,8 @@ class UnObsReflectionLikelihood(object):
         # delta = abs(epsilon) - x0
         # print(epsilon, x0, delta)
 
-        k = 50000.0
-        L = 50000.0
+        k = 5000.0
+        L = 5000.0
         self.k = k
         self.L = L
         val = L / (1.0 + exp(-k * (epsilon - x0)))
