@@ -156,6 +156,117 @@ class ConditionalDistribution(object):
             ]
 
         return self.dmbar
+    
+class ConditionalDistributionPink(object):
+    """
+    A class to compute useful stuff about the conditional distribution
+
+    """
+
+    def __init__(self, norm_s0, mu, dmu, S, dS, s0, sp, sigma_lambda=0.1):
+        # norm_s0 is a float i.e. norm(s0)
+
+        R_E = (sp / np.linalg.norm(sp)) - s0
+
+        scaling = (np.dot(R_E.T, R_E) / 2.0)
+        sigma_E = scaling * sigma_lambda
+        print(f"scaling {scaling[0,0]}")
+
+        self._mu = mu  # 3x1 array
+        self._dmu = dmu  # 3 x n array
+        self._S = S  # 3x3 array
+        self._dS = dS  # 3 x 3 x n array
+        #self.sigma_lambda = sigma_lambda
+
+        # Partition the covariance matrix
+        S11 = S[0:2, 0:2]
+        S12 = S[0:2, 2].reshape(2, 1)
+        S21 = S[2, 0:2].reshape(1, 2)
+        S22 = S[2, 2]
+
+        # The partitioned mean vector
+        mu1 = mu[0:2, 0].reshape(2, 1)
+        mu2 = mu[2, 0]
+        # a = norm(s0)
+
+        # The epsilon
+        if sigma_lambda == 0.0:
+            self.epsilon_p = norm_s0 - mu2
+            self.kappa = 0.0
+        else:
+            self.p2 = ((mu2 * (sigma_E**2)) + (norm_s0 * S22)) / (S22 + (sigma_E**2))
+            self.p2 = self.p2[0][0]
+            print(self.p2, norm_s0)
+            self.epsilon_p = self.p2 - mu2
+            self.kappa = (sigma_E**2) / ((sigma_E**2) + S22)
+        print(f"epsilon_p {self.epsilon_p}")
+        # Compute the conditional mean
+        self._mubar = mu1 + S12 * (1 / S22) * self.epsilon_p #i.e. p1
+        assert self._mubar.shape == (2, 1)
+
+        # Compute the conditional covariance matrix
+        self._Sbar = S11 - (np.matmul(S12 * (1 / S22), S21) * (1.0-self.kappa))
+        assert self._Sbar.shape == (2, 2)
+        if self.kappa != 0.0:
+            self._Sbar12 = self.kappa * S12
+            self._Sbar21 = self.kappa * S21
+            self._Sbar22 = self.kappa * S22
+            pdotp = (self._mubar[0,0] **2) + (self._mubar[1,0] **2) + (self.p2 **2)
+            pdots0 = (self._mubar[0,0] * s0[0,0]) + (self._mubar[1,0] * s0[1,0]) + (self.p2 * s0[2,0])
+            print(self.p2)
+            prefac = 0.5 * pdotp/ pdots0
+            self.s_r = (self._mubar[0,0] - (prefac * s0[0,0]), self._mubar[1,0] - (prefac * s0[1,0]), self.p2 - (prefac * s0[2,0]))
+            print(self.s_r)
+            old_mubar = mu1 + S12 * (1 / S22) * (norm_s0 - mu2)
+            print(old_mubar[0][0], self._mubar[0][0])
+        # Set to None and compute on demand
+        self.dSbar = None
+        self.dmbar = None
+        self.d2Sbar = None
+        self.d2mbar = None
+
+    def mean(self) -> np.array:
+        """
+        Return the conditional mean (a 2x1 array), in the xy frame
+
+        """
+        if self.kappa == 0.0:
+            return self._mubar
+        else: # need to return q1
+            return self._mubar
+
+    def sigma(self) -> np.array:
+        """
+        Return the conditional sigma (a 2x2 array)
+
+        """
+        return self._Sbar
+
+    def first_derivatives_of_sigma(self) -> List[np.array]:
+        """
+        Return the marginal first derivatives (as a list of 2x2 arrays)
+
+        """
+        if self.dSbar is None:
+            self.dSbar = [
+                compute_dSbar(self._S, self._dS[:, :, i])
+                for i in range(self._dS.shape[2])
+            ]
+
+        return self.dSbar
+
+    def first_derivatives_of_mean(self) -> List[np.array]:
+        """
+        Return the marginal first derivatives (a list of 2x1 arrays)
+
+        """
+        if self.dmbar is None:
+            self.dmbar = [
+                compute_dmbar(self._S, self._dS[:, :, i], self._dmu[:, i], self.epsilon)
+                for i in range(self._dS.shape[2])
+            ]
+
+        return self.dmbar
 
 
 def rotate_vec3_double(R, A):
@@ -205,9 +316,10 @@ class ReflectionLikelihood(object):
             self.R, modelstate.get_dr_dp()
         )  # const when not refining uc/orientation?
         # Construct the conditional distribution
-        self.conditional = ConditionalDistribution(
-            self.norm_s0, self.mu, self.dmu, self.S, self.dS
+        self.conditional = ConditionalDistributionPink(
+            self.norm_s0, self.mu, self.dmu, self.S, self.dS, self.s0, self.sp
         )
+        print(self.h)
 
     def update(self):
 
@@ -420,6 +532,7 @@ class MaximumLikelihoodTarget(object):
                     panel_ids[i],
                 )
             )
+        assert 0
 
     def update(self):
         for d in self.data:
