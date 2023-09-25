@@ -239,6 +239,7 @@ def filtered_arrays_from_experiments_reflections(
             except KeyError:  # catch case where prf were removed.
                 refl["intensity"] = refl["intensity.sum.value"]
                 refl["variance"] = refl["intensity.sum.variance"]
+            
             if outlier_rejection_after_filter and intensity_to_use != "intensity.scale":
                 refl = reject_outliers(refl, expt, method="simple", zmax=12.0)
                 refl = refl.select(~refl.get_flags(refl.flags.outlier_in_scaling))

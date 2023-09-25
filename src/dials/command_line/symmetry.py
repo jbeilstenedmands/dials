@@ -39,7 +39,7 @@ from dials.util.multi_dataset_handling import (
     parse_multiple_datasets,
     update_imageset_ids,
 )
-from dials.util.options import ArgumentParser, reflections_and_experiments_from_files
+from dials.util.options import ArgumentParser, reflections_and_experiments_from_files, flatten_experiments
 from dials.util.version import dials_version
 
 logger = logging.getLogger("dials.command_line.symmetry")
@@ -503,9 +503,9 @@ def _reindex_experiments_reflections(experiments, reflections, space_group, cb_o
     reindexed_reflections = flex.reflection_table()
     reflections = update_imageset_ids(experiments, reflections)
     for i in range(len(reindexed_experiments)):
-        reindexed_refl = copy.deepcopy(reflections[i])
+        reindexed_refl = reflections[i]
         reindexed_refl["miller_index"] = cb_op.apply(reindexed_refl["miller_index"])
-        reindexed_reflections.extend(reindexed_refl)
+        reindexed_reflections = reindexed_reflections#.extend(reindexed_refl)
     return reindexed_experiments, [reindexed_reflections]
 
 
@@ -523,6 +523,124 @@ Examples::
 
   dials.symmetry models.expt observations.refl
 """
+import h5py
+from dxtbx import flumpy
+import time
+from dials.array_family import flex
+
+
+class H5FlexTable(flex.reflection_table):
+
+    def __init__(self, file, handle, cumulative_selection, keys, flex_table, size, identifier):
+        self._file = file
+        self._handle = handle
+        self._cumulative_selection = cumulative_selection
+        self._keys = list(keys)
+        self._flex_table = flex_table
+        self._size = size
+        self._flex_table["flags"] = self["flags"]
+        self._identifier = identifier
+
+    @classmethod
+    def from_file(cls, h5_file):
+        handle = h5py.File(h5_file, "r")
+        cumulative_selection = None
+        keys = handle["entry"]["SWEEP1"].keys()
+        flex_table = flex.reflection_table([])
+        size = handle["entry"]["SWEEP1"].attrs["num_reflections"]
+        identifier = handle["entry"]["SWEEP1"].attrs["experiment_identifier"]
+        return cls(h5_file, handle, cumulative_selection, keys, flex_table, size, identifier)
+
+    def select(self, sel):
+        if self._cumulative_selection:
+            cumulative_selection = self._cumulative_selection.select(sel)
+        else:
+            cumulative_selection = sel.iselection()
+        flex_table = self._flex_table.select(sel)
+        size = self._flex_table.size()
+        keys = self._keys
+        file = self._file
+        handle = h5py.File(file)
+        identifier = self._identifier
+        return H5FlexTable(file, handle, cumulative_selection, keys, flex_table, size, identifier)
+
+    def experiment_identifiers(self):
+        return {0 : self._identifier}
+
+    def size(self):
+        return int(self._size)
+
+    def get_flags(self, flag, *args, **kwargs):
+        return self._flex_table.get_flags(flag, *args, **kwargs)
+
+    def unset_flags(self, sel, flags):
+        self._flex_table.unset_flags(sel, flags)
+
+    def set_flags(self, sel, flags):
+        self._flex_table.set_flags(sel, flags)
+
+    def __len__(self):
+        return self._size
+
+    def __contains__(self, key):
+        return (key in self._keys)
+
+    def __delitem__(self, key):
+        if key in self._flex_table:
+            del self._flex_table[key]
+
+    def del_selected(self, sel):
+        if type(sel).__name__ == "bool":
+            if self._cumulative_selection:
+                self._cumulative_selection = self._cumulative_selection.select(~sel)
+            else:
+                self._cumulative_selection = sel.iselection()
+        else:
+            non_isel = flex.bool(self._cumulative_selection.size(), True)
+            non_isel.set_selected(sel, False)
+            if self._cumulative_selection:
+                self._cumulative_selection = self._cumulative_selection.select(non_isel)
+            else:
+                self._cumulative_selection = non_isel.iselection()
+        self._flex_table.del_selected(sel)
+        self._size = self._flex_table.size()
+
+    def __del__(self):
+        self._handle.close()
+
+    def keys(self):
+        return self._keys
+
+    def __getitem__(self, k):
+        assert k in self._keys
+        if k not in self._flex_table:
+            data = self._handle["entry"]["SWEEP1"][k][()]
+            self._flex_table[k] = self._convert(k, data)
+        return self._flex_table[k]
+
+    def __setitem__(self,k,v):
+        self._flex_table[k] = v
+        if k not in self._keys:
+            self._keys.append(k)
+
+    def _convert(self, key, data):
+        if key == "miller_index": #special
+            val = flumpy.vec_from_numpy(data)
+            new = flex.miller_index(
+                val.as_vec3_double().parts()[0].iround(),
+                val.as_vec3_double().parts()[1].iround(),
+                val.as_vec3_double().parts()[2].iround()
+            )
+        elif len(data.shape) == 2:
+            if data.shape[1] == 3 or  data.shape[1] == 2: #vec3 or vec2 double
+                new = flumpy.vec_from_numpy(data)
+            else:
+                raise RuntimeError("Unrecognised data")
+        else:
+            new = flumpy.from_numpy(data)
+        if self._cumulative_selection:
+            new = new.select(self._cumulative_selection)
+        return new
 
 
 @dials.util.show_mail_handle_errors()
@@ -557,8 +675,9 @@ def run(args=None):
     if params.seed is not None:
         flex.set_random_seed(params.seed)
         random.seed(params.seed)
+    experiments = flatten_experiments(params.input.experiments)
 
-    if not params.input.experiments or not params.input.reflections:
+    '''if not params.input.experiments or not params.input.reflections:
         parser.print_help()
         sys.exit()
 
@@ -566,7 +685,9 @@ def run(args=None):
         params.input.reflections, params.input.experiments
     )
 
-    reflections = parse_multiple_datasets(reflections)
+    reflections = parse_multiple_datasets(reflections)'''
+    
+    reflections = [H5FlexTable.from_file("refls.h5")]
 
     if len(experiments) != len(reflections):
         sys.exit(
