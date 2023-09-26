@@ -104,7 +104,7 @@ class ScalerFactory:
         assert len(id_vals) == 1, list(id_vals)
         logger.info(
             "The experiment id for this dataset is %s.",
-            reflection_table.experiment_identifiers().keys()[0],
+            list(reflection_table.experiment_identifiers().keys())[0],
         )
 
 

@@ -46,7 +46,7 @@ from libtbx import phil
 
 from dials.algorithms.scaling.algorithm import ScaleAndFilterAlgorithm, ScalingAlgorithm
 from dials.util import Sorry, log, show_mail_handle_errors
-from dials.util.options import ArgumentParser, reflections_and_experiments_from_files
+from dials.util.options import ArgumentParser, flatten_experiments, reflections_and_experiments_from_files
 from dials.util.version import dials_version
 
 try:
@@ -213,20 +213,24 @@ def run(args: List[str] = None, phil: phil.scope = phil_scope) -> None:
     parser = ArgumentParser(
         usage=usage,
         read_experiments=True,
-        read_reflections=True,
+        read_reflections=False,#True,
         phil=phil,
         check_format=False,
         epilog=__doc__,
     )
     params, options = parser.parse_args(args=args, show_diff_phil=False)
 
-    if not params.input.experiments or not params.input.reflections:
+    '''if not params.input.experiments or not params.input.reflections:
         parser.print_help()
-        sys.exit()
+        sys.exit()'''
 
-    reflections, experiments = reflections_and_experiments_from_files(
-        params.input.reflections, params.input.experiments
-    )
+    experiments = flatten_experiments(params.input.experiments)
+    from dials.array_family.h5_flex_table import H5FlexTable
+    reflections = [H5FlexTable.from_file("symmetrized.refl")]
+
+    #reflections, experiments = reflections_and_experiments_from_files(
+    #    params.input.reflections, params.input.experiments
+    #)
 
     log.config(verbosity=options.verbose, logfile=params.output.log)
     logger.info(dials_version())

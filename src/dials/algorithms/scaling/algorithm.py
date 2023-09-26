@@ -353,10 +353,10 @@ class ScalingAlgorithm:
         # Note, we don't use flex.reflection_table.concat below on purpose, so
         # that the dataset ids in the table are consistent from input to output
         # when datasets are removed, e.g. by filtering, exclude_datasets= etc.
-        joint_table = flex.reflection_table()
-        for i in range(len(self.reflections)):
+        joint_table = self.reflections[0]
+        for i in range(1, len(self.reflections)):
             joint_table.extend(self.reflections[i])
-            self.reflections[i] = 0  # del reference from initial list
+            self.reflections[i] = 0  # del reference from initial list'''
 
         # remove reflections with very low scale factors
         sel = (
