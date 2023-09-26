@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import collections
-import copy
 import json
 import logging
 import math
@@ -500,12 +499,15 @@ def _reindex_experiments_reflections(experiments, reflections, space_group, cb_o
     reindexed_experiments = reindex_experiments(
         experiments, cb_op, space_group=space_group
     )
-    reindexed_reflections = flex.reflection_table()
     reflections = update_imageset_ids(experiments, reflections)
-    for i in range(len(reindexed_experiments)):
+    reindexed_reflections = reflections[0]
+    reindexed_reflections["miller_index"] = cb_op.apply(
+        reindexed_reflections["miller_index"]
+    )
+    for i in range(1, len(reindexed_experiments)):
         reindexed_refl = reflections[i]
         reindexed_refl["miller_index"] = cb_op.apply(reindexed_refl["miller_index"])
-        reindexed_reflections = reindexed_refl  # ections  # .extend(reindexed_refl)
+        reindexed_reflections.extend(reindexed_refl)
     return reindexed_experiments, [reindexed_reflections]
 
 
