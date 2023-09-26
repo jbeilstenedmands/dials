@@ -39,11 +39,7 @@ from dials.util.multi_dataset_handling import (
     parse_multiple_datasets,
     update_imageset_ids,
 )
-from dials.util.options import (
-    ArgumentParser,
-    flatten_experiments,
-    reflections_and_experiments_from_files,
-)
+from dials.util.options import ArgumentParser, reflections_and_experiments_from_files
 from dials.util.version import dials_version
 
 logger = logging.getLogger("dials.command_line.symmetry")
@@ -509,7 +505,7 @@ def _reindex_experiments_reflections(experiments, reflections, space_group, cb_o
     for i in range(len(reindexed_experiments)):
         reindexed_refl = reflections[i]
         reindexed_refl["miller_index"] = cb_op.apply(reindexed_refl["miller_index"])
-        reindexed_reflections = reindexed_refl#ections  # .extend(reindexed_refl)
+        reindexed_reflections = reindexed_refl  # ections  # .extend(reindexed_refl)
     return reindexed_experiments, [reindexed_reflections]
 
 
@@ -561,9 +557,8 @@ def run(args=None):
     if params.seed is not None:
         flex.set_random_seed(params.seed)
         random.seed(params.seed)
-    experiments = flatten_experiments(params.input.experiments)
 
-    """if not params.input.experiments or not params.input.reflections:
+    if not params.input.experiments or not params.input.reflections:
         parser.print_help()
         sys.exit()
 
@@ -571,9 +566,7 @@ def run(args=None):
         params.input.reflections, params.input.experiments
     )
 
-    reflections = parse_multiple_datasets(reflections)"""
-    from dials.array_family.h5_flex_table import H5FlexTable
-    reflections = [H5FlexTable.from_file("refls.h5")]
+    reflections = parse_multiple_datasets(reflections)
 
     if len(experiments) != len(reflections):
         sys.exit(

@@ -214,16 +214,15 @@ class Importer:
                 format_kwargs,
                 load_models,
             )
+        # Second try to read reflection files
+        if read_reflections:
+            self.unhandled = self.try_read_reflections(self.unhandled, verbose)
 
-        # Second try to read experiment files
+        # Third try to read experiment files
         if read_experiments:
             self.unhandled = self.try_read_experiments(
                 self.unhandled, check_format, verbose
             )
-
-        # Third try to read reflection files
-        if read_reflections:
-            self.unhandled = self.try_read_reflections(self.unhandled, verbose)
 
     def _handle_converter_error(self, argument, exception, type, validation=False):
         "Record information about errors that occurred processing an argument"

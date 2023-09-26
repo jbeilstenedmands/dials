@@ -232,12 +232,19 @@ class _:
         """
         Read the reflection table from either pickle or msgpack
         """
+        from dials.array_family.h5_flex_table import H5FlexTable
+
         try:
-            return dials_array_family_flex_ext.reflection_table.from_msgpack_file(
-                filename
-            )
-        except RuntimeError:
-            return dials_array_family_flex_ext.reflection_table.from_pickle(filename)
+            return H5FlexTable.from_file(filename)
+        except Exception:
+            try:
+                return dials_array_family_flex_ext.reflection_table.from_msgpack_file(
+                    filename
+                )
+            except RuntimeError:
+                return dials_array_family_flex_ext.reflection_table.from_pickle(
+                    filename
+                )
 
     @staticmethod
     def empty_standard(nrows):
