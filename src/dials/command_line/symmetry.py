@@ -501,6 +501,7 @@ def _reindex_experiments_reflections(experiments, reflections, space_group, cb_o
     )
     reflections = update_imageset_ids(experiments, reflections)
     reindexed_reflections = reflections[0]
+    print(type(reindexed_reflections))
     reindexed_reflections["miller_index"] = cb_op.apply(
         reindexed_reflections["miller_index"]
     )
