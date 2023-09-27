@@ -292,22 +292,25 @@ def scaled_data_as_miller_array(
 ):
     """Get a scaled miller array from an experiment and reflection table."""
     if len(reflection_table_list) > 1:
-        joint_table = flex.reflection_table()
+        joint_table = None#flex.reflection_table()
         for reflection_table in reflection_table_list:
             # better to just create many miller arrays and join them?
-            refl_for_joint_table = flex.reflection_table()
+            '''refl_for_joint_table = flex.reflection_table()
             for col in [
                 "miller_index",
                 "intensity.scale.value",
                 "inverse_scale_factor",
                 "intensity.scale.variance",
             ]:
-                refl_for_joint_table[col] = reflection_table[col]
+                refl_for_joint_table[col] = reflection_table[col]'''
             good_refl_sel = ~reflection_table.get_flags(
                 reflection_table.flags.bad_for_scaling, all=False
             )
-            refl_for_joint_table = refl_for_joint_table.select(good_refl_sel)
-            joint_table.extend(refl_for_joint_table)
+            refl_for_joint_table = reflection_table.select(good_refl_sel)
+            if joint_table:
+                joint_table.extend(refl_for_joint_table)
+            else:
+                joint_table = refl_for_joint_table
     else:
         reflection_table = reflection_table_list[0]
         good_refl_sel = ~reflection_table.get_flags(

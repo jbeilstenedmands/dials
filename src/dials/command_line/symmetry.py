@@ -493,20 +493,20 @@ Using space group I 2 2 2, space group I 21 21 21 is equally likely.\n"""
     if params.output.html and params.systematic_absences.check:
         ScrewAxisObserver().generate_html_report(params.output.html)
 
-
+import copy
 def _reindex_experiments_reflections(experiments, reflections, space_group, cb_op):
     """Reindex the input data."""
     reindexed_experiments = reindex_experiments(
         experiments, cb_op, space_group=space_group
     )
     reflections = update_imageset_ids(experiments, reflections)
-    reindexed_reflections = reflections[0]
+    reindexed_reflections = copy.deepcopy(reflections[0])
     print(type(reindexed_reflections))
     reindexed_reflections["miller_index"] = cb_op.apply(
         reindexed_reflections["miller_index"]
     )
     for i in range(1, len(reindexed_experiments)):
-        reindexed_refl = reflections[i]
+        reindexed_refl = copy.deepcopy(reflections[i])
         reindexed_refl["miller_index"] = cb_op.apply(reindexed_refl["miller_index"])
         reindexed_reflections.extend(reindexed_refl)
     return reindexed_experiments, [reindexed_reflections]

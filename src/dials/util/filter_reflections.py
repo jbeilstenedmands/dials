@@ -417,14 +417,17 @@ class FilteringReductionMethods:
                 dataset_ids = set(reflection_table["id"])
                 n_datasets = len(dataset_ids)
                 if n_datasets > 1:
-                    total_reflection_table = flex.reflection_table()
+                    total_reflection_table = None#flex.reflection_table()
                     for id_ in dataset_ids:
                         single_table = reflection_table.select(
                             reflection_table["id"] == id_
                         )
-                        total_reflection_table.extend(
-                            sum_partial_reflections(single_table)
-                        )
+                        if total_reflection_table:
+                            total_reflection_table.extend(
+                                sum_partial_reflections(single_table)
+                            )
+                        else:
+                            total_reflection_table = single_table
                     reflection_table = total_reflection_table
                 else:
                     reflection_table = sum_partial_reflections(reflection_table)
