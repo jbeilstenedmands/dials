@@ -232,10 +232,10 @@ class _:
         """
         Read the reflection table from either pickle or msgpack
         """
-        from dials.array_family.h5_flex_table import H5FlexTable
+        from dials.array_family.h5_flex_table_2 import H5FlexTable2
 
         try:
-            return H5FlexTable.from_file(filename)
+            return H5FlexTable2.from_file(filename)
         except Exception:
             try:
                 return dials_array_family_flex_ext.reflection_table.from_msgpack_file(
