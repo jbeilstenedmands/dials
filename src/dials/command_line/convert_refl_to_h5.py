@@ -14,7 +14,6 @@ output.filename = refls.h5
 .type = str
 """
 )
-import numpy as np
 
 
 @dials.util.show_mail_handle_errors()
@@ -40,10 +39,12 @@ def run(args=None):
     reflections = reflections[0]
 
     handle = h5py.File(params.output.filename, "w")
-
-    group = handle.create_group("entry/data")
+    identifiers = list(reflections.experiment_identifiers().values())
+    assert len(identifiers) == 1
+    group = handle.create_group(f"reflections/{identifiers[0]}")
     group.attrs["num_reflections"] = len(reflections)
-    identifiers_group = handle.create_group("entry/experiment_identifiers")
+    group.attrs["experiment_identifier"] = str(identifiers[0])
+    """identifiers_group = handle.create_group("entry/experiment_identifiers")
     identifiers = np.array(
         [str(i) for i in reflections.experiment_identifiers().values()], dtype="S"
     )
@@ -51,7 +52,7 @@ def run(args=None):
         "identifiers", data=identifiers, dtype=identifiers.dtype
     )
     ids = np.array(list(reflections.experiment_identifiers().keys()), dtype=int)
-    identifiers_group.create_dataset("ids", data=ids, dtype=ids.dtype)
+    identifiers_group.create_dataset("ids", data=ids, dtype=ids.dtype)"""
     # group.attrs["experiment_identifier"] = reflections.experiment_identifiers()[0]
 
     for col in reflections.keys():

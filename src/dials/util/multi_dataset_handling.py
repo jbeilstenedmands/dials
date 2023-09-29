@@ -167,9 +167,7 @@ def parse_multiple_datasets(reflections):
             # unindxeded reflections here to get rid of id = -1
             if -1 in refl_table["id"]:
                 refl_table = refl_table.select(refl_table["id"] != -1)
-            print(refl_table)
             result = refl_table.split_by_experiment_id()
-            print(result)
             single_reflection_tables.extend(result)
         else:
             single_reflection_tables.append(refl_table)
