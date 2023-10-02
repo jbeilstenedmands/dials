@@ -22,43 +22,22 @@ class H5FlexTable2(object):
         keys,
         identifier_to_table_map,
         identifier_to_initial_size_map,
-        id_=None,
+        experiment_identifiers_map,
     ):
         # assert that can't have data from a single sweep in multiple files
         self._identifier_to_file_map = identifier_to_file_map
         self._file_to_handle_map = file_to_handle_map
-        self._files = list(file_to_handle_map.keys())
-        self._handles = list(file_to_handle_map.values())
         self._identifier_to_cumulative_selection = (
             identifier_to_cumulative_selection_map
         )
         self._keys = keys  # must be same for all files in order to extend
         self._identifier_to_table_map = identifier_to_table_map
         self._identifier_to_initial_size_map = identifier_to_initial_size_map
-        self._experiment_identifiers = {}
-        if id_ is not None:
-            assert len(self._identifier_to_table_map) == 1
-            identifier = list(self._identifier_to_cumulative_selection.keys())[0]
-            t = self._identifier_to_table_map[identifier]
-            if self._identifier_to_cumulative_selection[identifier] is not None:
-                s = t.size()
-            else:
-                s = self._identifier_to_initial_size_map[identifier]
-            t["id"] = flex.int(s, id_)
-            self._experiment_identifiers.update(t.experiment_identifiers())
-        else:
-            for i, (identifier, t) in enumerate(self._identifier_to_table_map.items()):
-                if self._identifier_to_cumulative_selection[identifier] is not None:
-                    s = t.size()
-                else:
-                    s = self._identifier_to_initial_size_map[identifier]
-                t["id"] = flex.int(s, i)
-                t.experiment_identifiers()[i] = identifier
-                self._experiment_identifiers.update(t.experiment_identifiers())
+        self._experiment_identifiers = experiment_identifiers_map
 
     def __str__(self):
         out = f"H5FlexTable at {id(self)}"
-        files = "".join(f"\n    {f}" for f in self._files)
+        files = "".join(f"\n    {f}" for f in self._file_to_handle_map.keys())
         out += f"\n  Files: {files}"
 
         sizes = ", ".join(str(v) for v in self._identifier_to_initial_size_map.values())
@@ -70,6 +49,18 @@ class H5FlexTable2(object):
         out += f"\n  Keys in use (n={len(in_use)}): {in_use}"
 
         return out
+
+    def reset_ids(self):
+        reverse_map = {v: k for k, v in self.experiment_identifiers().items()}
+        for k in list(self.experiment_identifiers().keys()):
+            del self.experiment_identifiers()[k]
+        if not len(self):
+            return
+        orig_id = self["id"].deep_copy()
+        for i_exp, exp_id in enumerate(reverse_map.keys()):
+            sel_exp = orig_id == reverse_map[exp_id]
+            self["id"].set_selected(sel_exp, i_exp)
+            self.experiment_identifiers()[i_exp] = exp_id
 
     def experiment_identifiers(self):
         return self._experiment_identifiers
@@ -99,10 +90,12 @@ class H5FlexTable2(object):
         identifiers_to_file_map = {}
         identifiers_to_table_map = {}
         identifiers_to_cumulative_selection_map = {}
-        for i in identifiers:
-            identifiers_to_file_map[i] = h5_file
-            identifiers_to_table_map[i] = flex.reflection_table([])
-            identifiers_to_cumulative_selection_map[i] = None
+        experiment_identifiers_map = {}
+        for n, identifier in enumerate(identifiers):
+            identifiers_to_file_map[identifier] = h5_file
+            identifiers_to_table_map[identifier] = flex.reflection_table([])
+            experiment_identifiers_map[n] = identifier
+            identifiers_to_cumulative_selection_map[identifier] = None
 
         file_to_handle_map = {h5_file: handle}
 
@@ -113,6 +106,7 @@ class H5FlexTable2(object):
             list(column_keys),
             identifiers_to_table_map,
             identifiers_to_initial_size_map,
+            experiment_identifiers_map,
         )
 
     def extend(self, other):
@@ -120,12 +114,11 @@ class H5FlexTable2(object):
         assert set(self._keys) == set(other._keys)
         self._identifier_to_file_map.update(other._identifier_to_file_map)
         handle_map = {}
-        for file_ in other._files:
+        for file_ in other._identifier_to_file_map.values():
             handle = h5py.File(file_, "r")
             handle_map[file_] = handle
         self._file_to_handle_map.update(handle_map)
-        self._files.extend(other._files)
-        self._handles.extend(handle_map.values())
+        # self._files.extend(other._files)
         for identifier, v in other._identifier_to_cumulative_selection.items():
             if identifier in self._identifier_to_cumulative_selection:
                 self._identifier_to_cumulative_selection[identifier].extend(v)
@@ -151,6 +144,21 @@ class H5FlexTable2(object):
                 n += sel.size()
         return n
 
+    def select_on_experiment_identifiers(self, list_of_identifiers):
+        for identifier in self._identifier_to_file_map.keys():
+            if identifier not in list_of_identifiers:
+                file = self._identifier_to_file_map[identifier]
+                handle = self._file_to_handle_map[file]
+                handle.close()
+                del self._file_to_handle_map[file]
+                del self._identifier_to_cumulative_selection[identifier]
+                del self._identifier_to_table_map[identifier]
+                del self._identifier_to_initial_size_map[identifier]
+                del self._experiment_identifiers[identifier]
+                del self._identifier_to_file_map[identifier]
+        # FIXME update experiment_identifiers?
+        return self
+
     def split_by_experiment_id(self):
         tables = []
         for id_, identifier in enumerate(self._identifier_to_file_map.keys()):
@@ -172,6 +180,7 @@ class H5FlexTable2(object):
                     self._identifier_to_initial_size_map[identifier]
                 )
             }
+            experiment_identifiers = {id_: identifier}
             tables.append(
                 H5FlexTable2(
                     id_to_file_map,
@@ -180,7 +189,7 @@ class H5FlexTable2(object):
                     copy.deepcopy(self._keys),
                     flex_table_map,
                     initial_size_map,
-                    id_=id_,
+                    experiment_identifiers,
                 )
             )
         return tables
@@ -194,12 +203,13 @@ class H5FlexTable2(object):
 
         idtocs = copy.deepcopy(self._identifier_to_cumulative_selection)
         flex_table_map = {}
+        experiment_identifiers_map = copy.deepcopy(self.experiment_identifiers())
         if all(v is None for v in self._identifier_to_cumulative_selection.values()):
             n = 0
-            for (
+            for i, (
                 identifier,
                 initial_size,
-            ) in self._identifier_to_initial_size_map.items():
+            ) in enumerate(self._identifier_to_initial_size_map.items()):
                 this_sel = sel[n : n + initial_size]
                 n += initial_size
                 idtocs[identifier] = this_sel.iselection()
@@ -208,6 +218,7 @@ class H5FlexTable2(object):
                     table.size()
                 ):  # FIXME tables always have at least id? so unnecessary check?
                     flex_table_map[identifier] = table.select(this_sel)
+
                 else:
                     flex_table_map[identifier] = table  # pass the empty table
         else:
@@ -227,7 +238,7 @@ class H5FlexTable2(object):
                 ].select(this_sel)
             assert n == self.size()
         handle_map = {}
-        for file_ in self._files:
+        for file_ in self._file_to_handle_map.keys():
             handle = h5py.File(file_, "r")
             handle_map[file_] = handle
 
@@ -238,6 +249,7 @@ class H5FlexTable2(object):
             copy.deepcopy(self._keys),
             flex_table_map,
             copy.deepcopy(self._identifier_to_initial_size_map),
+            experiment_identifiers_map,
         )
 
     def as_file(self, f):
@@ -260,38 +272,6 @@ class H5FlexTable2(object):
                 group.create_dataset(k, data=data, shape=data.shape, dtype=data.dtype)
         new_handle.close()
 
-        """identifiers_group = new_handle.create_group("entry/experiment_identifiers")
-        group.attrs["num_reflections"] = self.size()
-        identifiers = np.array(
-            [str(i) for i in self._flex_table.experiment_identifiers().values()],
-            dtype="S",
-        )
-        identifiers_group.create_dataset(
-            "identifiers", data=identifiers, dtype=identifiers.dtype
-        )
-        ids = np.array(
-            list(self._flex_table.experiment_identifiers().keys()), dtype=int
-        )
-        identifiers_group.create_dataset("ids", data=ids, dtype=ids.dtype)
-
-        for k in self._keys:
-            if k in self._flex_table:
-                data = flumpy.to_numpy(self._flex_table[k])
-            else:
-                data = None
-                for file_, handle in self._file_to_handle_map.items():
-                    this_data = handle["entry"]["data"][k][()]
-                    if self._file_to_cumulative_selection[file_] is not None:
-                        sel = flumpy.to_numpy(self._file_to_cumulative_selection[file_])
-                        this_data = this_data[sel]
-                    if data is None:
-                        data = this_data
-                    else:
-                        data = np.concatenate([data, this_data])
-            group.create_dataset(k, data=data, shape=data.shape, dtype=data.dtype)
-        new_handle.close()
-        pass"""
-
     def __delitem__(self, key):
         id_0 = list(self._identifier_to_table_map.keys())[0]
         if key in self._identifier_to_table_map[id_0].keys():
@@ -303,7 +283,7 @@ class H5FlexTable2(object):
     def __deepcopy__(self, memo):
 
         idtof = copy.deepcopy(self._identifier_to_file_map, memo)
-        files = copy.deepcopy(self._files, memo)
+        files = copy.deepcopy(list(self._file_to_handle_map.keys()), memo)
         handle_map = {}
         for file_ in files:
             handle = h5py.File(file_, "r")
@@ -313,7 +293,7 @@ class H5FlexTable2(object):
         idtocs = copy.deepcopy(self._identifier_to_cumulative_selection, memo)
         flex_table_map = copy.deepcopy(self._identifier_to_table_map, memo)
         initial = copy.deepcopy(self._identifier_to_initial_size_map, memo)
-
+        experiment_identifiers_map = copy.deepcopy(self._experiment_identifiers, memo)
         return H5FlexTable2(
             idtof,
             handle_map,
@@ -321,6 +301,7 @@ class H5FlexTable2(object):
             keys,
             flex_table_map,
             initial,
+            experiment_identifiers_map,
         )
 
     def __len__(self):
@@ -373,14 +354,7 @@ class H5FlexTable2(object):
 
     @property
     def flags(self):
-        f = None
-        for t in self._identifier_to_table_map.values():
-            ti = t.flags
-            if f:
-                f.extend(ti)
-            else:
-                f = ti
-        return f
+        return flex.reflection_table.flags
 
     def get_flags(self, *args, **kwargs):
         table = flex.reflection_table([])

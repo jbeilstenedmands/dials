@@ -228,10 +228,13 @@ class cosym(Subject):
 
         This includes the cosym.json, reflections and experiments files."""
 
-        reindexed_reflections = flex.reflection_table()
+        reindexed_reflections = None
         self._reflections = update_imageset_ids(self._experiments, self._reflections)
         for refl in self._reflections:
-            reindexed_reflections.extend(refl)
+            if reindexed_reflections:
+                reindexed_reflections.extend(refl)
+            else:
+                reindexed_reflections = refl
         reindexed_reflections.reset_ids()
 
         logger.info(
