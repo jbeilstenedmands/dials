@@ -145,17 +145,23 @@ class H5FlexTable2(object):
         return n
 
     def select_on_experiment_identifiers(self, list_of_identifiers):
-        for identifier in self._identifier_to_file_map.keys():
+        for identifier in list(self._identifier_to_file_map.keys()):
             if identifier not in list_of_identifiers:
-                file = self._identifier_to_file_map[identifier]
+                """file = self._identifier_to_file_map[identifier]
                 handle = self._file_to_handle_map[file]
                 handle.close()
-                del self._file_to_handle_map[file]
+                del self._file_to_handle_map[file]"""
                 del self._identifier_to_cumulative_selection[identifier]
                 del self._identifier_to_table_map[identifier]
                 del self._identifier_to_initial_size_map[identifier]
-                del self._experiment_identifiers[identifier]
+                for k, v in zip(
+                    list(self._experiment_identifiers.keys()),
+                    list(self._experiment_identifiers.values()),
+                ):
+                    if v == identifier:
+                        del self._experiment_identifiers[k]
                 del self._identifier_to_file_map[identifier]
+                # now if no more identifiers point to that file - close the handle?
         # FIXME update experiment_identifiers?
         return self
 
@@ -354,12 +360,15 @@ class H5FlexTable2(object):
 
     @property
     def flags(self):
-        return flex.reflection_table.flags
+        id_0 = list(self._identifier_to_table_map.keys())[0]
+
+        return self._identifier_to_table_map[id_0].flags
 
     def get_flags(self, *args, **kwargs):
         table = flex.reflection_table([])
         table["flags"] = self["flags"]
-        return table.get_flags(*args, **kwargs)
+        res = table.get_flags(*args, **kwargs)
+        return res
 
     def unset_flags(self, sel, flags):
         id_0 = list(self._identifier_to_table_map.keys())[0]
