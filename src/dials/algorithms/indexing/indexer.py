@@ -506,7 +506,7 @@ class Indexer:
         if self.params.debug:
             self._debug_write_reciprocal_lattice_points_as_pdb()
 
-        self.reflections["id"] = flex.int(len(self.reflections), -1)
+        # self.reflections["id"] = flex.int(len(self.reflections), -1)
 
     def index(self):
         experiments = ExperimentList()
@@ -593,7 +593,7 @@ class Indexer:
                 # reset reflection lattice flags
                 # the lattice a given reflection belongs to: a value of -1 indicates
                 # that a reflection doesn't belong to any lattice so far
-                self.reflections["id"] = flex.int(len(self.reflections), -1)
+                # self.reflections["id"] = flex.int(len(self.reflections), -1)
 
                 self.index_reflections(experiments, self.reflections)
 
@@ -614,14 +614,14 @@ class Indexer:
                 logger.info("Starting refinement (macro-cycle %i)", i_cycle + 1)
                 logger.info("#" * 80)
                 logger.info("")
-                self.indexed_reflections = self.reflections["id"] > -1
+                self.indexed_reflections = self.reflections["id"] > 0
 
                 sel = flex.bool(len(self.reflections), False)
                 lengths = 1 / self.reflections["rlp"].norms()
                 if self.d_min is not None:
                     isel = (lengths <= self.d_min).iselection()
                     sel.set_selected(isel, True)
-                sel.set_selected(self.reflections["id"] == -1, True)
+                sel.set_selected(self.reflections["id"] == 0, True)
                 self.reflections.unset_flags(sel, self.reflections.flags.indexed)
                 self.unindexed_reflections = self.reflections.select(sel)
 

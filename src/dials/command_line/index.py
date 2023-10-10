@@ -242,12 +242,10 @@ def run(args=None, phil=working_phil):
         parser.print_help()
         return
 
-    try:
-        indexed_experiments, indexed_reflections = index(
-            experiments, reflections, params
-        )
-    except (DialsIndexError, ValueError) as e:
-        sys.exit(str(e))
+    # try:
+    indexed_experiments, indexed_reflections = index(experiments, reflections, params)
+    # except (DialsIndexError, ValueError) as e:
+    #    sys.exit(str(e))
 
     # Save experiments
     logger.info("Saving refined experiments to %s", params.output.experiments)
