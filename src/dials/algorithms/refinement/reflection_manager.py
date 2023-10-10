@@ -145,7 +145,7 @@ class BlockCalculator:
 
         for iexp, exp in enumerate(self._experiments):
 
-            sel = self._reflections["id"] == iexp
+            sel = self._reflections["id"] == iexp+1
             isel = sel.iselection()
             exp_phi = phi_obs.select(isel)
 
@@ -187,7 +187,7 @@ class BlockCalculator:
 
         for iexp, exp in enumerate(self._experiments):
 
-            sel = self._reflections["id"] == iexp
+            sel = self._reflections["id"] == iexp+1
             isel = sel.iselection()
             exp_phi = phi_obs.select(isel)
 
@@ -223,6 +223,8 @@ class ReflectionManagerFactory:
 
         # While a random subset of reflections is used, continue to
         # set random.seed to get consistent behaviour
+        print(set(reflections["id"]))
+        print(experiments)
         if params.random_seed is not None:
             random.seed(params.random_seed)
             flex.set_random_seed(params.random_seed)
@@ -536,7 +538,7 @@ class ReflectionManager:
                 continue
             if exp.scan.is_still():
                 continue
-            sel = obs_data["id"] == iexp
+            sel = obs_data["id"] == iexp+1
             s0 = self._s0vecs[iexp]
             s1 = obs_data["s1"].select(sel)
             phi = obs_data["xyzobs.mm.value"].parts()[2].select(sel)
@@ -596,7 +598,7 @@ class ReflectionManager:
         working_isel = flex.size_t()
         for iexp, exp in enumerate(self._experiments):
 
-            sel = self._reflections["id"] == iexp
+            sel = self._reflections["id"] == iexp+1
             isel = sel.iselection()
             # refs = self._reflections.select(sel)
             nrefs = sample_size = len(isel)

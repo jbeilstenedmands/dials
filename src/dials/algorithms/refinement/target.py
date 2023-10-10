@@ -230,7 +230,7 @@ class Target:
         to_keep = flex.bool(len(inc), False)
 
         for iexp, exp in enumerate(self._experiments):
-            sel = reflections["id"] == iexp
+            sel = reflections["id"] == iexp+1
 
             # keep all reflections if there is no rotation axis
             if exp.goniometer is None:
@@ -280,7 +280,7 @@ class Target:
         """return the number of reflections currently used in the calculation"""
 
         self.update_matches()
-        sel = self._matches["id"] == iexp
+        sel = self._matches["id"] == iexp+1
         return sel.count(True)
 
     def get_num_matches_for_panel(self, ipanel=0):
@@ -525,7 +525,7 @@ class Target:
         """calculate unweighted RMSDs for the selected experiment."""
 
         self.update_matches()
-        sel = self._matches["id"] == iexp
+        sel = self._matches["id"] == iexp+1
         n = sel.count(True)
         if n == 0:
             return None

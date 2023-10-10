@@ -127,6 +127,7 @@ class LatticeSearch(indexer.Indexer):
     def find_candidate_crystal_models(self):
 
         candidate_crystal_models = []
+
         if self._lattice_search_strategy:
             candidate_crystal_models = (
                 self._lattice_search_strategy.find_crystal_models(
@@ -136,6 +137,7 @@ class LatticeSearch(indexer.Indexer):
         return candidate_crystal_models
 
     def find_lattices(self):
+
         self.candidate_crystal_models = self.find_candidate_crystal_models()
 
         crystal_model, n_indexed = self.choose_best_orientation_matrix(
@@ -186,6 +188,8 @@ class LatticeSearch(indexer.Indexer):
 
         for cm in candidate_orientation_matrices:
             sel = self.reflections["id"] == 0
+
+            print(sel.count(True), self.reflections.size())
             if self.d_min is not None:
                 sel &= 1 / self.reflections["rlp"].norms() > self.d_min
             xo, yo, zo = self.reflections["xyzobs.mm.value"].parts()
@@ -325,6 +329,7 @@ class BasisVectorSearch(LatticeSearch):
 
     def find_candidate_basis_vectors(self):
         self.d_min = self.params.refinement_protocol.d_min_start
+        print(set(self.reflections["id"]))
         sel = self.reflections["id"] == 0
         if self.d_min is not None:
             sel &= 1 / self.reflections["rlp"].norms() > self.d_min

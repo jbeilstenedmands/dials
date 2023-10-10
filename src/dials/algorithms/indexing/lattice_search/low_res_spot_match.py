@@ -176,6 +176,8 @@ class LowResSpotMatch(Strategy):
 
         # Take a subset of the observations at the same resolution and calculate
         # some values that will be needed for the search
+        print(set(reflections["id"]))
+        assert 0
         self._calc_obs_data(reflections, experiments)
 
         # Construct a library of candidate low res indices with their d* values

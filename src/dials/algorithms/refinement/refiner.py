@@ -174,7 +174,7 @@ def _trim_scans_to_observations(experiments, reflections):
 
     for iexp, exp in enumerate(experiments):
 
-        sel = reflections["id"] == iexp
+        sel = reflections["id"] == iexp + 1
         isel = sel.iselection()
         if obs_z is not None:
             exp_z = obs_z.select(isel)
@@ -267,6 +267,7 @@ class RefinerFactory:
 
         # copy and filter the reflections
         reflections = cls._filter_reflections(reflections)
+        print(reflections.size())
 
         (
             experiments,
@@ -276,6 +277,8 @@ class RefinerFactory:
         ) = cls._build_reflection_manager_and_predictor(
             params, reflections, experiments
         )
+        print(dir(refman))
+        
 
         return cls._build_refiner(params, experiments, refman, ref_predictor, do_stills)
 
@@ -296,7 +299,7 @@ class RefinerFactory:
 
     @classmethod
     def _build_reflection_manager_and_predictor(cls, params, reflections, experiments):
-
+        print("here")
         # Currently a refinement job can only have one parameterisation of the
         # prediction equation. This can either be of the XYDelPsi (stills) type, the
         # XYPhi (scans) type or the scan-varying XYPhi type with a varying crystal
@@ -352,10 +355,11 @@ class RefinerFactory:
         logger.debug("Input reflection list size = %d observations", len(reflections))
 
         # create reflection manager
+        print("here2")
         refman = ReflectionManagerFactory.from_parameters_reflections_experiments(
             params.refinement.reflections, reflections, experiments, do_stills
         )
-
+        print("here3")
         logger.debug(
             "Number of observations that pass initial inclusion criteria = %d",
             refman.get_accepted_refs_size(),

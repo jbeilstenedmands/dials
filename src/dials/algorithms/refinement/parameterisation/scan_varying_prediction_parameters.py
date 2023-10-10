@@ -432,7 +432,7 @@ class ScanVaryingPredictionParameterisation(XYPhiPredictionParameterisation):
         for iexp, exp in enumerate(self._experiments):
 
             # select the reflections of interest
-            sel = reflections["id"] == iexp
+            sel = reflections["id"] == iexp+1
             isel = sel.iselection()
 
             # skip empty experiments (https://github.com/dials/dials/issues/1417)

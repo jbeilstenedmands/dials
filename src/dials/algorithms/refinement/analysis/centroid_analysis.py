@@ -27,7 +27,7 @@ class CentroidAnalyser:
         x, y, z = reflections["xyzcal.mm"].parts()
         sel = (x == 0) & (y == 0)
         reflections = reflections.select(~sel)
-        self._nexp = flex.max(reflections["id"]) + 1
+        self._nexp = flex.max(reflections["id"])
 
         # Ensure required keys are present
         if not all(k in reflections for k in ["x_resid", "y_resid", "phi_resid"]):
@@ -51,7 +51,7 @@ class CentroidAnalyser:
 
         # first, just determine a suitable block size for analysis
         for iexp in range(self._nexp):
-            ref_this_exp = reflections.select(reflections["id"] == iexp)
+            ref_this_exp = reflections.select(reflections["id"] == iexp+1)
             if len(ref_this_exp) == 0:
                 # can't do anything, just keep an empty dictionary
                 self._results.append({})
@@ -130,7 +130,7 @@ class CentroidAnalyser:
                     continue
                 phi_range = results_this_exp["phi_range"]
                 nblocks = results_this_exp["nblocks"]
-                ref_this_exp = self._reflections.select(self._reflections["id"] == iexp)
+                ref_this_exp = self._reflections.select(self._reflections["id"] == iexp+1)
                 x_resid = ref_this_exp["x_resid"]
                 y_resid = ref_this_exp["y_resid"]
                 phi_resid = ref_this_exp["phi_resid"]

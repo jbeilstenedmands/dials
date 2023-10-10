@@ -329,7 +329,7 @@ class PredictionParameterisation:
         # Populate values in these arrays
         for iexp, exp in enumerate(self._experiments):
 
-            sel = reflections["id"] == iexp
+            sel = reflections["id"] == iexp+1
             isel = sel.iselection()
             self._experiment_to_idx.append(isel)
             subref = reflections.select(sel)

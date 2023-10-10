@@ -530,10 +530,10 @@ class Indexer:
                     self.reflections.select(d_spacings > d_min_indexed)
                 )
                 crystal_ids = self.reflections.select(d_spacings > d_min_indexed)["id"]
-                if (crystal_ids == -1).count(True) < min_reflections_for_indexing:
+                if (crystal_ids == 0).count(True) < min_reflections_for_indexing:
                     logger.info(
                         "Finish searching for more lattices: %i unindexed reflections remaining.",
-                        (crystal_ids == -1).count(True),
+                        (crystal_ids == 0).count(True),
                     )
                     break
 
@@ -668,7 +668,7 @@ class Indexer:
                         logger.info(
                             "Removing %d reflections with id %d", sel.count(True), last
                         )
-                        refined_reflections["id"].set_selected(sel, -1)
+                        refined_reflections["id"].set_selected(sel, 0)
 
                         break
 
@@ -676,7 +676,7 @@ class Indexer:
 
                 self.refined_reflections = refined_reflections
                 self.refined_reflections.unset_flags(
-                    self.refined_reflections["id"] < 0,
+                    self.refined_reflections["id"] == 0,
                     self.refined_reflections.flags.indexed,
                 )
 
@@ -684,9 +684,9 @@ class Indexer:
                     ref_sel = self.refined_reflections.select(
                         self.refined_reflections["imageset_id"] == i
                     )
-                    ref_sel = ref_sel.select(ref_sel["id"] >= 0)
+                    ref_sel = ref_sel.select(ref_sel["id"] > 0)
                     for i_expt in set(ref_sel["id"]):
-                        refined_expt = refined_experiments[i_expt]
+                        refined_expt = refined_experiments[i_expt-1]
                         expt.detector = refined_expt.detector
                         expt.beam = refined_expt.beam
                         expt.goniometer = refined_expt.goniometer
@@ -906,7 +906,7 @@ class Indexer:
 
         refiner, refined, outliers = refine(self.all_params, reflections, experiments)
         if outliers is not None:
-            reflections["id"].set_selected(outliers, -1)
+            reflections["id"].set_selected(outliers, 0)
         predicted = refiner.predict_for_indexed()
         reflections["xyzcal.mm"] = predicted["xyzcal.mm"]
         reflections["entering"] = predicted["entering"]
