@@ -506,7 +506,7 @@ class Indexer:
         if self.params.debug:
             self._debug_write_reciprocal_lattice_points_as_pdb()
 
-        self.reflections["id"] = flex.int(len(self.reflections), -1)
+        # self.reflections["id"] = flex.int(len(self.reflections), -1)
 
     def index(self):
         experiments = ExperimentList()
@@ -593,7 +593,11 @@ class Indexer:
                 # reset reflection lattice flags
                 # the lattice a given reflection belongs to: a value of -1 indicates
                 # that a reflection doesn't belong to any lattice so far
-                self.reflections["id"] = flex.int(len(self.reflections), -1)
+                # self.reflections["id"] = flex.int(len(self.reflections), -1)
+                self.reflections.unset_flags(
+                    flex.bool(len(self.reflections), True),
+                    self.reflections.flags.indexed,
+                )
 
                 self.index_reflections(experiments, self.reflections)
 
@@ -614,16 +618,20 @@ class Indexer:
                 logger.info("Starting refinement (macro-cycle %i)", i_cycle + 1)
                 logger.info("#" * 80)
                 logger.info("")
-                self.indexed_reflections = self.reflections["id"] > -1
+                self.indexed_reflections = self.reflections.get_flags(
+                    self.reflections.flags.indexed
+                )  # self.reflections["id"] > -1
 
                 sel = flex.bool(len(self.reflections), False)
                 lengths = 1 / self.reflections["rlp"].norms()
                 if self.d_min is not None:
                     isel = (lengths <= self.d_min).iselection()
                     sel.set_selected(isel, True)
-                sel.set_selected(self.reflections["id"] == -1, True)
+                # sel.set_selected(self.reflections["id"] == -1, True)
+                sel.set_selected(~self.indexed_reflections, True)
                 self.reflections.unset_flags(sel, self.reflections.flags.indexed)
                 self.unindexed_reflections = self.reflections.select(sel)
+                # self.unindexed_reflections["id"] = flex.int(self.unindexed_reflections.size(), -1)
 
                 reflections_for_refinement = self.reflections.select(
                     self.indexed_reflections
@@ -668,7 +676,8 @@ class Indexer:
                         logger.info(
                             "Removing %d reflections with id %d", sel.count(True), last
                         )
-                        refined_reflections["id"].set_selected(sel, -1)
+                        # refined_reflections["id"].set_selected(sel, -1)
+                        # sel.set_selected(self.reflections["id"] == -1, True)
 
                         break
 
@@ -848,7 +857,10 @@ class Indexer:
             logger.info(
                 "model %i (%i reflections):",
                 i_expt + 1,
-                (reflections["id"] == i_expt).count(True),
+                (
+                    (reflections["id"] == i_expt)
+                    & reflections.get_flags(reflections.flags.indexed)
+                ).count(True),
             )
             logger.info(expt.crystal)
 
@@ -906,7 +918,8 @@ class Indexer:
 
         refiner, refined, outliers = refine(self.all_params, reflections, experiments)
         if outliers is not None:
-            reflections["id"].set_selected(outliers, -1)
+            reflections.unset_flags(outliers, reflections.flags.indexed)
+            # reflections["id"].set_selected(outliers, -1)
         predicted = refiner.predict_for_indexed()
         reflections["xyzcal.mm"] = predicted["xyzcal.mm"]
         reflections["entering"] = predicted["entering"]
