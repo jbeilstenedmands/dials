@@ -96,7 +96,9 @@ class AssignIndicesLocal(AssignIndicesStrategy):
             inside_resolution_limit = d_spacings > d_min
         else:
             inside_resolution_limit = flex.bool(reciprocal_lattice_points.size(), True)
-        sel = inside_resolution_limit & (reflections["id"] == -1)
+        sel = inside_resolution_limit & ~reflections.get_flags(
+            reflections.flags.indexed
+        )  # (reflections["id"] == -1)
         isel = sel.iselection()
         rlps = reciprocal_lattice_points.select(isel)
         refs = reflections.select(isel)

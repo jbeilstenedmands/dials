@@ -88,7 +88,10 @@ def run_indexing(
             sg.type().hall_symbol(),
             expected_hall_symbol,
         )
-        reflections = indexed_reflections.select(indexed_reflections["id"] == i)
+        reflections = indexed_reflections.select(
+            indexed_reflections.get_flags(indexed_reflections.flags.indexed)
+            & (indexed_reflections["id"] == i)
+        )
         mi = reflections["miller_index"]
         assert (mi != (0, 0, 0)).count(False) == 0
         reflections = reflections.select(mi != (0, 0, 0))
