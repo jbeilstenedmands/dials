@@ -182,13 +182,18 @@ class CompareGlobalLocal:
 
         # index reflections using simple "global" method
         self.reflections_global = copy.deepcopy(reflections)
-        self.reflections_global["id"] = flex.int(len(self.reflections_global), -1)
+        # self.reflections_global["id"] = flex.int(len(self.reflections_global), -1)
+        self.reflections_global["id"] = flex.int(len(self.reflections_global), 0)
+        self.reflections_global.unset_flags(
+            flex.bool(self.reflections_global.size(), True),
+            self.reflections_global.flags.indexed,
+        )
         self.reflections_global["imageset_id"] = flex.int(
             len(self.reflections_global), 0
         )
         index_reflections_global(self.reflections_global, ExperimentList([experiment]))
         non_zero_sel = self.reflections_global["miller_index"] != (0, 0, 0)
-        assert self.reflections_global["id"].select(~non_zero_sel).all_eq(-1)
+        # assert self.reflections_global["id"].select(~non_zero_sel).all_eq(-1)
         self.misindexed_global = (
             (expected_miller_indices == self.reflections_global["miller_index"])
             .select(non_zero_sel)
@@ -200,10 +205,16 @@ class CompareGlobalLocal:
 
         # index reflections using xds-style "local" method
         self.reflections_local = copy.deepcopy(reflections)
-        self.reflections_local["id"] = flex.int(len(self.reflections_local), -1)
+        # self.reflections_local["id"] = flex.int(len(self.reflections_local), -1)
+        self.reflections_local["id"] = flex.int(len(self.reflections_local), 0)
+        self.reflections_local.unset_flags(
+            flex.bool(self.reflections_local.size(), True),
+            self.reflections_local.flags.indexed,
+        )
+
         index_reflections_local(self.reflections_local, ExperimentList([experiment]))
         non_zero_sel = self.reflections_local["miller_index"] != (0, 0, 0)
-        assert self.reflections_local["id"].select(~non_zero_sel).all_eq(-1)
+        # assert self.reflections_local["id"].select(~non_zero_sel).all_eq(-1)
         self.misindexed_local = (
             (expected_miller_indices == self.reflections_local["miller_index"])
             .select(non_zero_sel)
@@ -240,11 +251,21 @@ def test_index_reflections(dials_regression: Path):
     reflections.centroid_px_to_mm(experiments)
     reflections.map_centroids_to_reciprocal_space(experiments)
     reflections["imageset_id"] = flex.int(len(reflections), 0)
-    reflections["id"] = flex.int(len(reflections), -1)
+    # reflections["id"] = flex.int(len(reflections), -1)
+    reflections["id"] = flex.int(len(reflections), 0)
+    reflections.unset_flags(
+        flex.bool(reflections.size(), True), reflections.flags.indexed
+    )
     AssignIndicesGlobal(tolerance=0.3)(reflections, experiments)
     assert "miller_index" in reflections
-    counts = reflections["id"].counts()
-    assert dict(counts) == {-1: 1390, 0: 114692}
+    # counts = reflections["id"].counts()
+    indexed = reflections.get_flags(reflections.flags.indexed)
+    assert indexed.count(True) == 114692
+    assert indexed.count(False) == 1390
+    indexed = reflections["miller_index"] != (0, 0, 0)
+    assert indexed.count(True) == 114692
+    assert indexed.count(False) == 1390
+    # assert dict(counts) == {-1: 1390, 0: 114692}
 
 
 def test_local_multiple_rotations(dials_data):
@@ -260,7 +281,10 @@ def test_local_multiple_rotations(dials_data):
     # Generate some predicted reflections
     reflections = flex.reflection_table.from_predictions(experiments[0], dmin=4)
     reflections["imageset_id"] = flex.int(len(reflections), 0)
-    reflections["id"] = flex.int(len(reflections), -1)
+    reflections["id"] = flex.int(len(reflections), 0)
+    reflections.unset_flags(
+        flex.bool(reflections.size(), True), reflections.flags.indexed
+    )
     reflections["xyzobs.px.value"] = reflections["xyzcal.px"]
     reflections["xyzobs.mm.value"] = reflections["xyzcal.mm"]
     predicted_miller_indices = reflections["miller_index"]
@@ -284,7 +308,10 @@ def test_local_multiple_rotations(dials_data):
 
     # Reset miller indices and re-map to reciprocal space
     reflections["miller_index"] = flex.miller_index(len(reflections), (0, 0, 0))
-    reflections["id"] = flex.int(len(reflections), -1)
+    reflections["id"] = flex.int(len(reflections), 0)
+    reflections.unset_flags(
+        flex.bool(reflections.size(), True), reflections.flags.indexed
+    )
     reflections.centroid_px_to_mm(experiments)
     reflections.map_centroids_to_reciprocal_space(experiments)
 

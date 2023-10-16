@@ -529,13 +529,19 @@ class Indexer:
                 min_reflections_for_indexing = cutoff_fraction * len(
                     self.reflections.select(d_spacings > d_min_indexed)
                 )
-                crystal_ids = self.reflections.select(d_spacings > d_min_indexed)["id"]
-                if (crystal_ids == -1).count(True) < min_reflections_for_indexing:
+                sel_refls = self.reflections.select(d_spacings > d_min_indexed)
+                unindexed = ~sel_refls.get_flags(sel_refls.flags.indexed)
+
+                if unindexed.count(True) < min_reflections_for_indexing:
                     logger.info(
                         "Finish searching for more lattices: %i unindexed reflections remaining.",
-                        (crystal_ids == -1).count(True),
+                        unindexed.count(True),
                     )
                     break
+                else:
+                    logger.info(
+                        f"{unindexed.count(True)} unindexed reflections remaining."
+                    )
 
             n_lattices_previous_cycle = len(experiments)
 
@@ -676,9 +682,12 @@ class Indexer:
                         logger.info(
                             "Removing %d reflections with id %d", sel.count(True), last
                         )
-                        # refined_reflections["id"].set_selected(sel, -1)
+                        refined_reflections["id"].set_selected(sel, 0)
+                        del refined_reflections.experiment_identifiers()[last]
+                        refined_reflections.unset_flags(
+                            sel.iselection(), refined_reflections.flags.indexed
+                        )
                         # sel.set_selected(self.reflections["id"] == -1, True)
-
                         break
 
                 self._unit_cell_volume_sanity_check(experiments, refined_experiments)
