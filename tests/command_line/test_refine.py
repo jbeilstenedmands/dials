@@ -21,6 +21,7 @@ from annlib_ext import AnnAdaptor
 
 from dxtbx.model import Beam, Crystal, Detector, Experiment, Goniometer
 from dxtbx.model.experiment_list import ExperimentList, ExperimentListFactory
+from dxtbx.serialize import load
 
 from dials.algorithms.refinement.engine import Journal
 from dials.array_family import flex
@@ -87,13 +88,18 @@ def test_scan_varying_refinement_rmsds(dials_data, tmp_path):
         capture_output=True,
     )
     assert not result.returncode and not result.stderr
+    refl = flex.reflection_table.from_file(pickle_path)
+    expts = load.experiment_list(tmp_path / "refined.expt", check_format=False)
+    for i, expt in enumerate(expts):
+        refl.experiment_identifiers()[i] = expt.identifier
+    refl.as_file(tmp_path / "tmp.refl")
     # NB Requesting corrgram.pdf and history.json exercises
     # https://github.com/dials/dials/issues/1923
     result = subprocess.run(
         (
             shutil.which("dials.refine"),
             "refined.expt",
-            pickle_path,
+            "tmp.refl",
             "scan_varying=true",
             "output.history=history.json",
             "correlation_plot.filename=corrgram.pdf",

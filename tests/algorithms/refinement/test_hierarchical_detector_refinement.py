@@ -5,6 +5,8 @@ import math
 
 import pytest
 
+from dials.util.multi_dataset_handling import generate_experiment_identifiers
+
 
 def generate_reflections(experiments):
     from cctbx.sgtbx import space_group, space_group_symbols
@@ -42,6 +44,7 @@ def generate_reflections(experiments):
     # result is the same, but we gain also the flags and xyzcal.px columns
     ref_predictor = ScansExperimentsPredictor(experiments)
     obs_refs["id"] = flex.int(len(obs_refs), 0)
+    obs_refs.experiment_identifiers()[0] = experiments[0].identifier
     obs_refs = ref_predictor(obs_refs)
 
     # Set 'observed' centroids from the predicted ones
@@ -114,6 +117,7 @@ def test1(dials_data):
             imageset=None,
         )
     )
+    generate_experiment_identifiers(experiments)
 
     # simulate some reflections
     refs, ref_predictor = generate_reflections(experiments)

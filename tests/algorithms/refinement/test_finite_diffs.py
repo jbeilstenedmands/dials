@@ -50,6 +50,7 @@ def test(args=[]):
 
     # Reflection prediction
     from dials.algorithms.spot_prediction import IndexGenerator, ray_intersection
+    from dials.util.multi_dataset_handling import generate_experiment_identifiers
 
     from . import geometry_phil
 
@@ -107,6 +108,7 @@ def test(args=[]):
             imageset=None,
         )
     )
+    generate_experiment_identifiers(experiments)
 
     ###########################
     # Parameterise the models #
@@ -171,6 +173,7 @@ def test(args=[]):
     # result is the same, but we gain also the flags and xyzcal.px columns
     ref_predictor = ScansExperimentsPredictor(experiments)
     obs_refs["id"] = flex.int(len(obs_refs), 0)
+    obs_refs.experiment_identifiers()[0] = experiments[0].identifier
     obs_refs = ref_predictor(obs_refs)
 
     # Set 'observed' centroids from the predicted ones

@@ -657,6 +657,7 @@ def test_stills_indexer_multi_lattice_bug_MosaicSauter2014(dials_data, tmp_path)
         goniometer=None,
         scan=None,
         crystal=cs0,
+        identifier="a",
     )
 
     # Crystal-1
@@ -668,7 +669,10 @@ def test_stills_indexer_multi_lattice_bug_MosaicSauter2014(dials_data, tmp_path)
         goniometer=None,
         scan=None,
         crystal=cs1,
+        identifier="b",
     )
+    reflist.experiment_identifiers()[0] = "a"
+    reflist.experiment_identifiers()[1] = "b"
     # Construct a new experiment_list that will be passed on for refinement
     unrefined_explist = ExperimentList([exp0, exp1])
     # Get default params from stills_process and construct StillsIndexer, then run refinement

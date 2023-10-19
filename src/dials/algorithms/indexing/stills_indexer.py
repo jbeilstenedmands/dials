@@ -451,6 +451,7 @@ class StillsIndexer(Indexer):
                     crystal=crystal,
                 )
             )
+        generate_experiment_identifiers(experiments)
         return experiments
 
     def choose_best_orientation_matrix(self, candidate_orientation_matrices):

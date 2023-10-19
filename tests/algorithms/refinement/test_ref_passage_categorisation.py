@@ -82,6 +82,7 @@ def test():
             scan=myscan,
             crystal=mycrystal,
             imageset=None,
+            identifier="a",
         )
     )
 
@@ -91,6 +92,7 @@ def test():
 
     # Set the experiment number
     obs_refs["id"] = flex.int(len(obs_refs), 0)
+    obs_refs.experiment_identifiers()[0] = "a"
 
     # Calculate intersections
     ref_predictor = ScansExperimentsPredictor(experiments)

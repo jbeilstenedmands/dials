@@ -131,6 +131,7 @@ def init_test():
             scan=scan,
             crystal=crystal,
             imageset=None,
+            identifier="a",
         )
     )
     experiments_multi_panel.append(
@@ -141,6 +142,7 @@ def init_test():
             scan=scan,
             crystal=crystal,
             imageset=None,
+            identifier="b",
         )
     )
 
@@ -193,9 +195,11 @@ def init_test():
     tmp = flex.reflection_table.empty_standard(len(obs_refs_single))
     tmp.update(obs_refs_single)
     obs_refs_single = tmp
+    obs_refs_single.experiment_identifiers()[0] = "a"
     tmp = flex.reflection_table.empty_standard(len(obs_refs_multi))
     tmp.update(obs_refs_multi)
     obs_refs_multi = tmp
+    obs_refs_multi.experiment_identifiers()[0] = "b"
 
     test_data = namedtuple(
         "test_data",

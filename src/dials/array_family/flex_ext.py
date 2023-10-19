@@ -1220,6 +1220,16 @@ Found %s"""
             del self.experiment_identifiers()[id_val]
         return self
 
+    def get_selection_for_experiment_identifier(self, identifier):
+        for k, v in zip(
+            self.experiment_identifiers().keys(), self.experiment_identifiers().values()
+        ):
+            if v == identifier:
+                id_sel = self["id"] == k
+                return id_sel
+        # may not have identifier if selections have occured, this is fine
+        return cctbx.array_family.flex.bool(self.size(), False)
+
     def clean_experiment_identifiers_map(self):
         """
         Remove any entries from the identifier map that do not have any

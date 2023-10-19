@@ -56,6 +56,7 @@ def generate_reflections(experiments):
     # result is the same, but we gain also the flags and xyzcal.px columns
     ref_predictor = ScansExperimentsPredictor(experiments)
     obs_refs["id"] = flex.int(len(obs_refs), 0)
+    obs_refs.experiment_identifiers()[0] = experiments[0].identifier
     obs_refs = ref_predictor(obs_refs)
 
     # Set 'observed' centroids from the predicted ones
@@ -123,6 +124,7 @@ def test_fd_derivatives():
             scan=myscan,
             crystal=mycrystal,
             imageset=None,
+            identifier="a",
         )
     )
 
@@ -244,6 +246,7 @@ def test_refinement(dials_data):
             scan=scan,
             crystal=crystal,
             imageset=None,
+            identifier="a",
         )
     )
 

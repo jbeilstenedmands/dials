@@ -13,6 +13,7 @@ from libtbx import phil
 from dials.algorithms.refinement import DialsRefineConfigError, RefinerFactory
 from dials.algorithms.refinement.refiner import _trim_scans_to_observations, phil_scope
 from dials.array_family import flex
+from dials.util.multi_dataset_handling import generate_experiment_identifiers
 from dials.util.slice import slice_reflections
 
 
@@ -28,6 +29,9 @@ def test_multi_panel_parameterisations(dials_data, detector_parameterisation_cho
 
     reflections = flex.reflection_table.from_file(ref_file)
     experiments = ExperimentListFactory.from_json_file(exp_file, check_format=False)
+    generate_experiment_identifiers(experiments)
+    for i, expt in enumerate(experiments):
+        reflections.experiment_identifiers()[i] = expt.identifier
 
     # Set refinement parameters
     params = phil_scope.fetch(source=phil.parse("")).extract()
@@ -58,6 +62,9 @@ def test_trim_scans_to_observations(dials_data):
         data_dir / "indexed.expt", check_format=False
     )
     reflections = flex.reflection_table.from_file(data_dir / "indexed.refl")
+    generate_experiment_identifiers(experiments)
+    for i, expt in enumerate(experiments):
+        reflections.experiment_identifiers()[i] = expt.identifier
 
     # Check the image and oscillation range are what we expect
     image_ranges = [e.scan.get_image_range() for e in experiments]

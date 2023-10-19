@@ -12,6 +12,7 @@ from libtbx.phil import parse
 from dials.algorithms.refinement import RefinerFactory
 from dials.algorithms.refinement.restraints import RestraintsParameterisation
 from dials.array_family import flex
+from dials.util.multi_dataset_handling import generate_experiment_identifiers
 
 
 def test_single_crystal_restraints_gradients():
@@ -339,6 +340,9 @@ def test_10_crystals_with_stills_parameterisation(dials_data):
         experiments_path, check_format=False
     )
     reflections = flex.reflection_table.from_file(pickle_path)
+    generate_experiment_identifiers(experiments)
+    for i, expt in enumerate(experiments):
+        reflections.experiment_identifiers()[i] = expt.identifier
 
     refiner = RefinerFactory.from_parameters_data_experiments(
         working_params, reflections, experiments
@@ -433,6 +437,9 @@ def test_group_restraint_with_multiple_crystals_and_a_stills_refiner(dials_data)
         experiments_path, check_format=False
     )
     reflections = flex.reflection_table.from_file(pickle_path)
+    generate_experiment_identifiers(experiments)
+    for i, expt in enumerate(experiments):
+        reflections.experiment_identifiers()[i] = expt.identifier
 
     refiner = RefinerFactory.from_parameters_data_experiments(
         working_params, reflections, experiments

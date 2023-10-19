@@ -23,7 +23,10 @@ from dials.algorithms.indexing.max_cell import find_max_cell
 from dials.algorithms.indexing.symmetry import SymmetryHandler
 from dials.algorithms.refinement import DialsRefineConfigError, DialsRefineRuntimeError
 from dials.array_family import flex
-from dials.util.multi_dataset_handling import generate_experiment_identifiers
+from dials.util.multi_dataset_handling import (
+    assign_unique_identifiers,
+    generate_experiment_identifiers,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -303,6 +306,9 @@ class Indexer:
         self.reflections = reflections
         self.experiments = experiments
 
+        if not all(self.experiments.identifiers()):
+            assign_unique_identifiers(self.experiments, [self.reflections])
+
         self.params = params.indexing
         self.all_params = params
         self.refined_experiments = None
@@ -544,12 +550,14 @@ class Indexer:
 
             if len(experiments) == 0:
                 new_expts = self.find_lattices()
-                generate_experiment_identifiers(new_expts)
+                if not new_expts.identifiers():
+                    generate_experiment_identifiers(new_expts)
                 experiments.extend(new_expts)
             else:
                 try:
                     new = self.find_lattices()
-                    generate_experiment_identifiers(new)
+                    if not new.identifiers():
+                        generate_experiment_identifiers(new)
                     experiments.extend(new)
                 except DialsIndexError:
                     logger.info("Indexing remaining reflections failed")

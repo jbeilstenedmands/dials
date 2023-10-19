@@ -34,6 +34,8 @@ def tc():
     # Predict the reflections in place and put in a reflection manager
     ref_predictor = StillsExperimentsPredictor(test.stills_experiments)
     ref_predictor(test.reflections)
+    print(dict(test.reflections.experiment_identifiers()))
+    print(list(test.stills_experiments.identifiers()))
     test.refman = ReflectionManagerFactory.from_parameters_reflections_experiments(
         refman_phil_scope.extract(),
         test.reflections,

@@ -17,6 +17,7 @@ def test_run(dials_data):
     from dials.algorithms.refinement import RefinerFactory
     from dials.algorithms.refinement.refiner import phil_scope
     from dials.array_family import flex
+    from dials.util.multi_dataset_handling import generate_experiment_identifiers
 
     data_dir = dials_data("refinement_test_data", pathlib=True)
     exp_file = data_dir / "dials-423.json"
@@ -25,6 +26,9 @@ def test_run(dials_data):
     reflections = flex.reflection_table.from_file(ref_file)
     experiments = ExperimentListFactory.from_json_file(exp_file, check_format=False)
     """Test that the detector remains similar after refiner construction"""
+    generate_experiment_identifiers(experiments)
+    for i, expt in enumerate(experiments):
+        reflections.experiment_identifiers()[i] = expt.identifier
 
     params = phil_scope.fetch(source=phil.parse("")).extract()
 

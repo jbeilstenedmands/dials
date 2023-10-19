@@ -112,6 +112,7 @@ def test_run(dials_data, tmp_path):
                 scan=imageset_old.get_scan(),
                 crystal=result_old.experiments[0].crystal,
                 imageset=None,
+                identifier=result_old.experiments[0].identifier,
             )
         ]
     )
@@ -124,6 +125,7 @@ def test_run(dials_data, tmp_path):
                 scan=imageset_new.get_scan(),
                 crystal=result_new.experiments[0].crystal,
                 imageset=None,
+                identifier=result_new.experiments[0].identifier,
             )
         ]
     )

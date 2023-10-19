@@ -35,6 +35,7 @@ from dials.algorithms.refinement import (
 )
 from dials.algorithms.refinement.corrgram import create_correlation_plots
 from dials.array_family import flex
+from dials.util.multi_dataset_handling import generate_experiment_identifiers
 from dials.util.options import ArgumentParser, reflections_and_experiments_from_files
 from dials.util.version import dials_version
 
@@ -343,6 +344,10 @@ def run_dials_refine(experiments, reflections, params):
             Refiner object and the refinement history object.
 
     """
+    if not all(experiments.identifiers()):
+        generate_experiment_identifiers(experiments)
+        for i, exp in enumerate(experiments):
+            reflections.experiment_identifiers()[i] = exp.identifier
 
     # Warn about potentially unhelpful options
     if params.refinement.mp.nproc > 1:
@@ -441,12 +446,10 @@ def run_dials_refine(experiments, reflections, params):
                 el.append(experiments[i])
 
             refl = flex.reflection_table()
-            new_id = 0
             for i in ids:
                 refl_one_experiment = reflections.select(reflections["id"] == i)
-                refl_one_experiment["id"] = flex.int(len(refl_one_experiment), new_id)
-                new_id += 1
                 refl.extend(refl_one_experiment)
+            refl.reset_ids()
             refinement_sets.append(RefinementSet(el, refl, copy.deepcopy(params), ids))
 
         # Report on independent refinement sets
@@ -505,15 +508,8 @@ def run_dials_refine(experiments, reflections, params):
         table_rows = {}
         for (el, refl, refiner, _), ids in zip(refinement_results, disjoint_sets):
             header, rows = refiner.calc_exp_rmsd_table()
-            id_col = flex.int(len(refl))
-            for new_id, orig_id in enumerate(ids):
-                experiments[orig_id] = el[new_id]
-                id_col.set_selected(refl["id"] == new_id, orig_id)
-                rows[new_id][0] = str(orig_id)
-                table_rows[orig_id] = rows[new_id]
-            refl["id"] = id_col
-            reflections.extend(refl)
             table_headers.append(header)
+        reflections = flex.reflection_table.concat([i[1] for i in refinement_results])
 
         experiments = ExperimentList([experiments[i] for i in range(len(experiments))])
 

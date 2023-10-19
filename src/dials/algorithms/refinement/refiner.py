@@ -174,7 +174,7 @@ def _trim_scans_to_observations(experiments, reflections):
 
     for iexp, exp in enumerate(experiments):
 
-        sel = reflections["id"] == iexp
+        sel = reflections.get_selection_for_experiment_identifier(exp.identifier)
         isel = sel.iselection()
         if obs_z is not None:
             exp_z = obs_z.select(isel)
@@ -256,6 +256,11 @@ class RefinerFactory:
         for k in cols:
             if k in reflections:
                 rt[k] = reflections[k]
+        for k, v in zip(
+            reflections.experiment_identifiers().keys(),
+            reflections.experiment_identifiers().values(),
+        ):
+            rt.experiment_identifiers()[k] = v
 
         return rt
 

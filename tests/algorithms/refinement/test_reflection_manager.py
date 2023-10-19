@@ -8,6 +8,7 @@ from dxtbx.model.experiment_list import ExperimentListFactory
 
 from dials.algorithms.refinement.reflection_manager import ReflectionManager
 from dials.array_family import flex
+from dials.util.multi_dataset_handling import generate_experiment_identifiers
 
 
 def test_scan_margin(dials_data):
@@ -19,7 +20,9 @@ def test_scan_margin(dials_data):
     )
     reflections = flex.reflection_table.from_file(data_dir / "indexed.refl")
     orig_phi = reflections["xyzobs.mm.value"].parts()[2]
-
+    generate_experiment_identifiers(experiments)
+    for i, expt in enumerate(experiments):
+        reflections.experiment_identifiers()[i] = expt.identifier
     # Reflection Manager works on predictions, but this dataset has none, so
     # need to set the predictions flag
     reflections.set_flags(

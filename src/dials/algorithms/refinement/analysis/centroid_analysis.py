@@ -28,6 +28,7 @@ class CentroidAnalyser:
         sel = (x == 0) & (y == 0)
         reflections = reflections.select(~sel)
         self._nexp = flex.max(reflections["id"]) + 1
+        self._identifiers = list(reflections.experiment_identifiers().values())
 
         # Ensure required keys are present
         if not all(k in reflections for k in ["x_resid", "y_resid", "phi_resid"]):
@@ -50,8 +51,9 @@ class CentroidAnalyser:
         self._results = []
 
         # first, just determine a suitable block size for analysis
-        for iexp in range(self._nexp):
-            ref_this_exp = reflections.select(reflections["id"] == iexp)
+        for identifier in self._identifiers:
+            sel = reflections.get_selection_for_experiment_identifier(identifier)
+            ref_this_exp = reflections.select(sel)
             if len(ref_this_exp) == 0:
                 # can't do anything, just keep an empty dictionary
                 self._results.append({})
@@ -123,14 +125,17 @@ class CentroidAnalyser:
 
         # if we don't have average residuals already, calculate them
         if not self._average_residuals:
-            for iexp in range(self._nexp):
+            for iexp, identifier in enumerate(self._identifiers):
                 results_this_exp = self._results[iexp]
                 block_size = results_this_exp.get("block_size")
                 if block_size is None:
                     continue
                 phi_range = results_this_exp["phi_range"]
                 nblocks = results_this_exp["nblocks"]
-                ref_this_exp = self._reflections.select(self._reflections["id"] == iexp)
+                sel = self._reflections.get_selection_for_experiment_identifier(
+                    identifier
+                )
+                ref_this_exp = self._reflections.select(sel)
                 x_resid = ref_this_exp["x_resid"]
                 y_resid = ref_this_exp["y_resid"]
                 phi_resid = ref_this_exp["phi_resid"]

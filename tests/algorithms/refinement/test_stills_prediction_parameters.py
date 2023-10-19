@@ -29,6 +29,7 @@ from dials.algorithms.refinement.prediction.managed_predictors import (
 )
 from dials.algorithms.spot_prediction import IndexGenerator
 from dials.array_family import flex
+from dials.util.multi_dataset_handling import generate_experiment_identifiers
 
 from . import geometry_phil
 from .setup_geometry import Extract
@@ -68,6 +69,7 @@ class _Test:
                 imageset=None,
             )
         )
+        generate_experiment_identifiers(self.stills_experiments)
 
         # keep track of the parameterisation of the models
         self.det_param = DetectorParameterisationSinglePanel(self.detector)
@@ -116,6 +118,10 @@ class _Test:
         # Make a standard reflection_table and copy in the ray data
         self.reflections = flex.reflection_table.empty_standard(len(rays))
         self.reflections.update(rays)
+        self.reflections["id"] = flex.int(self.reflections.size(), 0)
+        self.reflections.experiment_identifiers()[0] = self.stills_experiments[
+            0
+        ].identifier
 
         # Set dummy observed variances to allow statistical weights to be set
         self.reflections["xyzobs.mm.variance"] += (1e-3, 1e-3, 1e-6)

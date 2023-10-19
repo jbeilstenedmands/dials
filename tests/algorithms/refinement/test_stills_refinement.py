@@ -82,7 +82,13 @@ def test(args=[]):
     # Build experiment lists
     stills_experiments = ExperimentList()
     stills_experiments.append(
-        Experiment(beam=mybeam, detector=mydetector, crystal=crystal, imageset=None)
+        Experiment(
+            beam=mybeam,
+            detector=mydetector,
+            crystal=crystal,
+            imageset=None,
+            identifier="a",
+        )
     )
     scans_experiments = ExperimentList()
     scans_experiments.append(
@@ -93,6 +99,7 @@ def test(args=[]):
             goniometer=mygonio,
             scan=myscan,
             imageset=None,
+            identifier="b",
         )
     )
 
@@ -159,6 +166,7 @@ def test(args=[]):
     tmp = flex.reflection_table.empty_standard(len(obs_refs))
     tmp.update(obs_refs)
     obs_refs = tmp
+    obs_refs.experiment_identifiers()[0] = "b"
 
     # Invent some variances for the centroid positions of the simulated data
     im_width = 0.1 * pi / 180.0
@@ -171,6 +179,7 @@ def test(args=[]):
     # Re-predict using the stills reflection predictor
     stills_ref_predictor = StillsExperimentsPredictor(stills_experiments)
     obs_refs_stills = stills_ref_predictor(obs_refs)
+    obs_refs_stills.experiment_identifiers()[0] = "a"
 
     # Set 'observed' centroids from the predicted ones
     obs_refs_stills["xyzobs.mm.value"] = obs_refs_stills["xyzcal.mm"]

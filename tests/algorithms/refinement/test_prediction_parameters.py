@@ -87,6 +87,7 @@ def test():
             scan=myscan,
             crystal=mycrystal,
             imageset=None,
+            identifier="a",
         )
     )
 
@@ -123,6 +124,7 @@ def test():
     # result is the same, but we gain also the flags and xyzcal.px columns
     ref_predictor = ScansExperimentsPredictor(experiments)
     obs_refs["id"] = flex.int(len(obs_refs), 0)
+    obs_refs.experiment_identifiers()[0] = "a"
     obs_refs = ref_predictor(obs_refs)
 
     # Set 'observed' centroids from the predicted ones

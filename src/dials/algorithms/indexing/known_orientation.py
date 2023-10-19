@@ -3,6 +3,7 @@ from __future__ import annotations
 from dxtbx.model.experiment_list import Experiment, ExperimentList
 
 from dials.algorithms.indexing.indexer import Indexer
+from dials.util.multi_dataset_handling import generate_experiment_identifiers
 
 
 class IndexerKnownOrientation(Indexer):
@@ -27,7 +28,7 @@ class IndexerKnownOrientation(Indexer):
                     goniometer=expt.goniometer,
                     scan=expt.scan,
                     crystal=cm,
-                    identifier=expt.identifier,
                 )
             )
+        generate_experiment_identifiers(experiments)
         return experiments

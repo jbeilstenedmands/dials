@@ -77,6 +77,7 @@ geometry.parameters.crystal.c.length.range = 10 50"""
                 scan=self.scan,
                 crystal=self.crystal,
                 imageset=None,
+                identifier="a",
             )
         )
 
@@ -125,6 +126,7 @@ geometry.parameters.crystal.c.length.range = 10 50"""
         # Re-predict using the Experiments predictor for all these reflections. The
         # result is the same, but we gain also the flags and xyzcal.px columns
         obs_refs["id"] = flex.int(len(obs_refs), 0)
+        obs_refs.experiment_identifiers()[0] = "a"
         obs_refs = self.ref_predictor(obs_refs)
 
         # Set 'observed' centroids from the predicted ones

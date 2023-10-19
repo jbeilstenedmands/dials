@@ -32,6 +32,7 @@ from dials.algorithms.refinement.prediction.managed_predictors import (
 )
 from dials.algorithms.refinement.refiner import RefinerFactory, phil_scope
 from dials.algorithms.spot_prediction import IndexGenerator, ray_intersection
+from dials.util.multi_dataset_handling import generate_experiment_identifiers
 
 from . import geometry_phil, minimiser_phil, setup_geometry
 
@@ -99,6 +100,7 @@ def test(args=[]):
             imageset=None,
         )
     )
+    generate_experiment_identifiers(experiments)
 
     assert len(experiments.detectors()) == 1
 
@@ -183,8 +185,10 @@ def test(args=[]):
     ray_predictor = ScansRayPredictor(experiments, sequence_range)
     obs_refs1 = ray_predictor(indices1, experiment_id=0)
     obs_refs1["id"] = flex.int(len(obs_refs1), 0)
+    obs_refs1.experiment_identifiers()[0] = experiments[0].identifier
     obs_refs2 = ray_predictor(indices2, experiment_id=1)
     obs_refs2["id"] = flex.int(len(obs_refs2), 1)
+    obs_refs2.experiment_identifiers()[1] = experiments[1].identifier
 
     # Take only those rays that intersect the detector
     intersects = ray_intersection(mydetector, obs_refs1)

@@ -14,6 +14,7 @@ from scitbx.array_family import flex
 
 from dials.algorithms.indexing import indexer
 from dials.algorithms.indexing.basis_vector_search import combinations, optimise
+from dials.util.multi_dataset_handling import generate_experiment_identifiers
 
 from .low_res_spot_match import LowResSpotMatch
 from .strategy import Strategy
@@ -158,6 +159,7 @@ class LatticeSearch(indexer.Indexer):
                         crystal=cm,
                     )
                 )
+        generate_experiment_identifiers(experiments)
         return experiments
 
     def choose_best_orientation_matrix(self, candidate_orientation_matrices):
@@ -212,6 +214,7 @@ class LatticeSearch(indexer.Indexer):
                         crystal=cm,
                     )
                 )
+            generate_experiment_identifiers(experiments)
             refl = self.reflections.select(sel)
             self.index_reflections(experiments, refl)
             if refl.get_flags(refl.flags.indexed).count(True) == 0:

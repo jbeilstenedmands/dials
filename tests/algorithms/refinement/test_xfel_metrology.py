@@ -12,6 +12,7 @@ from dials.algorithms.refinement import RefinerFactory
 from dials.algorithms.refinement.engine import Journal
 from dials.algorithms.refinement.refiner import phil_scope as refiner_phil_scope
 from dials.array_family import flex
+from dials.util.multi_dataset_handling import generate_experiment_identifiers
 
 
 def test_joint_refinement(dials_data, tmp_path):
@@ -66,6 +67,9 @@ def test_constrained_refinement(dials_data, tmp_path):
     # Load experiments and reflections
     refl = flex.reflection_table.from_file(data_dir / "benchmark_level2d.pickle")
     expt = ExperimentListFactory.from_json_file(data_dir / "benchmark_level2d.json")
+    generate_experiment_identifiers(expt)
+    for i, exp in enumerate(expt):
+        refl.experiment_identifiers()[i] = exp.identifier
 
     # There are zero reflections on some panels, so these will only move via constraints
     for i in [8, 10, 11, 26, 27, 40, 42, 43, 56, 58, 59]:
