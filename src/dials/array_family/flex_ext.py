@@ -1191,6 +1191,20 @@ Found %s"""
                 del self.experiment_identifiers()[k]
         return self
 
+    def get_selection_for_experiment_identifier(self, identifier):
+        # print(identifier)
+        for k, v in zip(
+            self.experiment_identifiers().keys(), self.experiment_identifiers().values()
+        ):
+            if v == identifier:
+                id_sel = self["id"] == k
+                return id_sel
+        print(
+            f"{identifier} not found. in table: {list(self.experiment_identifiers().values())}"
+        )
+        assert 0
+        return cctbx.array_family.flex.bool(self.size(), False)
+
     def remove_on_experiment_identifiers(self, list_of_identifiers):
         """
         Remove datasets from the table, given a list of experiment

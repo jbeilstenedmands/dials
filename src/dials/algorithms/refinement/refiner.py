@@ -174,7 +174,8 @@ def _trim_scans_to_observations(experiments, reflections):
 
     for iexp, exp in enumerate(experiments):
 
-        sel = reflections["id"] == iexp
+        # sel = reflections["id"] == iexp
+        sel = reflections.get_selection_for_experiment_identifier(exp.identifier)
         isel = sel.iselection()
         if obs_z is not None:
             exp_z = obs_z.select(isel)

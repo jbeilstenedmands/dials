@@ -505,7 +505,10 @@ class Indexer:
 
         if self.params.debug:
             self._debug_write_reciprocal_lattice_points_as_pdb()
-
+        # all reflections start with an id of 0 and imageset id of 0.
+        assert len(set(self.reflections["id"])) == len(
+            set(self.reflections["imageset_id"])
+        )
         # self.reflections["id"] = flex.int(len(self.reflections), -1)
 
     def index(self):
@@ -678,7 +681,13 @@ class Indexer:
                         # with this deleted experiment - indexed flag removed
                         # below
                         last = len(experiments)
-                        sel = refined_reflections["id"] == last
+                        # sel = refined_reflections["id"] == last
+                        last_identifier = experiments[-1].identifier
+                        sel = (
+                            refined_reflections.get_selection_for_experiment_identifier(
+                                last_identifier
+                            )
+                        )
                         logger.info(
                             "Removing %d reflections with id %d", sel.count(True), last
                         )
@@ -788,6 +797,7 @@ class Indexer:
                 if expt.crystal is not cryst:
                     continue
                 if not cb_op.is_identity_op():
+                    # sel = reflections.get_selection_for_experiment_identifier(expt.identifier)
                     miller_indices = reflections["miller_index"].select(
                         reflections["id"] == i_expt
                     )

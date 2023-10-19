@@ -38,6 +38,8 @@ class AssignIndicesGlobal(AssignIndicesStrategy):
         UB_matrices = flex.mat3_double([cm.get_A() for cm in experiments.crystals()])
         imgset_ids = reflections["imageset_id"].select(sel)
 
+        start = len(reflections.experiment_identifiers().keys())
+        # here, the experiments are new experiments with the crystal models assigned.
         for i_imgset, imgset in enumerate(experiments.imagesets()):
             sel_imgset = imgset_ids == i_imgset
 
@@ -50,16 +52,15 @@ class AssignIndicesGlobal(AssignIndicesStrategy):
 
             miller_indices = result.miller_indices()
             crystal_ids = result.crystal_ids()
-            print(set(crystal_ids))
-            expt_ids = flex.int(crystal_ids.size(), 0)
+            expt_ids = flex.int(crystal_ids.size(), i_imgset)
             for i_cryst, cryst in enumerate(experiments.crystals()):
                 sel_cryst = crystal_ids == i_cryst
                 for i_expt in experiments.where(crystal=cryst, imageset=imgset):
-                    expt_ids.set_selected(sel_cryst, i_expt)
+                    expt_ids.set_selected(sel_cryst, start + i_expt)
                     if experiments[i_expt].identifier:
-                        reflections.experiment_identifiers()[i_expt] = experiments[
-                            i_expt
-                        ].identifier
+                        reflections.experiment_identifiers()[
+                            start + i_expt
+                        ] = experiments[i_expt].identifier
 
             reflections["miller_index"].set_selected(
                 isel.select(sel_imgset), miller_indices

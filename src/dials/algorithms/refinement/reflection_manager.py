@@ -145,7 +145,10 @@ class BlockCalculator:
 
         for iexp, exp in enumerate(self._experiments):
 
-            sel = self._reflections["id"] == iexp
+            # sel = self._reflections["id"] == iexp
+            sel = self._reflections.get_selection_for_experiment_identifier(
+                exp.identifier
+            )
             isel = sel.iselection()
             exp_phi = phi_obs.select(isel)
 
@@ -187,7 +190,10 @@ class BlockCalculator:
 
         for iexp, exp in enumerate(self._experiments):
 
-            sel = self._reflections["id"] == iexp
+            # sel = self._reflections["id"] == iexp
+            sel = self._reflections.get_selection_for_experiment_identifier(
+                exp.identifier
+            )
             isel = sel.iselection()
             exp_phi = phi_obs.select(isel)
 
@@ -536,7 +542,8 @@ class ReflectionManager:
                 continue
             if exp.scan.is_still():
                 continue
-            sel = obs_data["id"] == iexp
+            # sel = obs_data["id"] == iexp
+            sel = obs_data.get_selection_for_experiment_identifier(exp.identifier)
             s0 = self._s0vecs[iexp]
             s1 = obs_data["s1"].select(sel)
             phi = obs_data["xyzobs.mm.value"].parts()[2].select(sel)
@@ -596,7 +603,10 @@ class ReflectionManager:
         working_isel = flex.size_t()
         for iexp, exp in enumerate(self._experiments):
 
-            sel = self._reflections["id"] == iexp
+            # sel = self._reflections["id"] == iexp
+            sel = self._reflections.get_selection_for_experiment_identifier(
+                exp.identifier
+            )
             isel = sel.iselection()
             # refs = self._reflections.select(sel)
             nrefs = sample_size = len(isel)

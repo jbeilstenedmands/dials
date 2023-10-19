@@ -329,27 +329,30 @@ class ModelEvaluation(Strategy):
             )
 
     def evaluate(self, experiments, reflections):
-        with LoggingContext("dials.algorithms.refinement", level=logging.ERROR):
-            indexed_reflections = reflections.select(
-                reflections.get_flags(reflections.flags.indexed)
+        # with LoggingContext("dials.algorithms.refinement", level=logging.ERROR):
+        indexed_reflections = reflections.select(
+            reflections.get_flags(reflections.flags.indexed)
+        )
+        print(len(experiments))
+        print(set(indexed_reflections["id"]))
+        print(dict(indexed_reflections.experiment_identifiers()))
+        try:
+            refiner = RefinerFactory.from_parameters_data_experiments(
+                self._params, indexed_reflections, experiments
             )
-            try:
-                refiner = RefinerFactory.from_parameters_data_experiments(
-                    self._params, indexed_reflections, experiments
-                )
-                refiner.run()
-            except (RuntimeError, ValueError):
-                return
-            else:
-                rmsds = refiner.rmsds()
-                xy_rmsds = math.sqrt(rmsds[0] ** 2 + rmsds[1] ** 2)
-                model_likelihood = 1.0 - xy_rmsds
-                result = Result(
-                    model_likelihood=model_likelihood,
-                    crystal=experiments.crystals()[0],
-                    rmsds=rmsds,
-                    n_indexed=len(indexed_reflections),
-                    fraction_indexed=float(len(indexed_reflections)) / len(reflections),
-                    hkl_offset=(0, 0, 0),
-                )
-                return result
+            refiner.run()
+        except (RuntimeError, ValueError):
+            return
+        else:
+            rmsds = refiner.rmsds()
+            xy_rmsds = math.sqrt(rmsds[0] ** 2 + rmsds[1] ** 2)
+            model_likelihood = 1.0 - xy_rmsds
+            result = Result(
+                model_likelihood=model_likelihood,
+                crystal=experiments.crystals()[0],
+                rmsds=rmsds,
+                n_indexed=len(indexed_reflections),
+                fraction_indexed=float(len(indexed_reflections)) / len(reflections),
+                hkl_offset=(0, 0, 0),
+            )
+            return result

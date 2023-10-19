@@ -14,6 +14,7 @@ from scitbx.array_family import flex
 
 from dials.algorithms.indexing import indexer
 from dials.algorithms.indexing.basis_vector_search import combinations, optimise
+from dials.util.multi_dataset_handling import generate_experiment_identifiers
 
 from .low_res_spot_match import LowResSpotMatch
 from .strategy import Strategy
@@ -128,6 +129,7 @@ class LatticeSearch(indexer.Indexer):
 
         candidate_crystal_models = []
         if self._lattice_search_strategy:
+            print(self.experiment.crystals())
             candidate_crystal_models = (
                 self._lattice_search_strategy.find_crystal_models(
                     self.reflections, self.experiments
@@ -213,6 +215,7 @@ class LatticeSearch(indexer.Indexer):
                         crystal=cm,
                     )
                 )
+            generate_experiment_identifiers(experiments)
             refl = self.reflections.select(sel)
             self.index_reflections(experiments, refl)
             if refl.get_flags(refl.flags.indexed).count(True) == 0:
