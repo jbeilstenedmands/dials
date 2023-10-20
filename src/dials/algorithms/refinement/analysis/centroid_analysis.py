@@ -27,7 +27,7 @@ class CentroidAnalyser:
         x, y, z = reflections["xyzcal.mm"].parts()
         sel = (x == 0) & (y == 0)
         reflections = reflections.select(~sel)
-        self._nexp = flex.max(reflections["id"]) + 1
+        self._nexp = len(set(reflections["id"]))
         self._identifiers = list(reflections.experiment_identifiers().values())
 
         # Ensure required keys are present

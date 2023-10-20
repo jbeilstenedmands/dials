@@ -92,7 +92,7 @@ class CentroidOutlier:
         sel = reflections.get_flags(reflections.flags.predicted)
         all_data = reflections.select(sel)
         all_data_indices = sel.iselection()
-        nexp = flex.max(all_data["id"]) + 1
+        nexp = len(set(all_data["id"]))
         identifiers = list(reflections.experiment_identifiers().values())
 
         jobs = []
