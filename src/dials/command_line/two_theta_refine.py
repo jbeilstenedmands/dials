@@ -472,6 +472,15 @@ class Script:
             logger.info("The following parameters have been modified:\n")
             logger.info(diff_phil)
 
+        if not all(experiments.identifiers()):
+            from dials.util.multi_dataset_handling import (
+                generate_experiment_identifiers,
+            )
+
+            generate_experiment_identifiers(experiments)
+            for i, expt in enumerate(experiments):
+                reflections.experiment_identifiers()[i] = expt.identifier
+
         # Convert to P 1?
         if params.refinement.triclinic:
             reflections, experiments = self.convert_to_P1(reflections, experiments)
