@@ -279,7 +279,7 @@ def calculate_frame_numbers(reflections, experiments):
         scan = exp.scan
         if not scan:
             continue
-        sel = reflections["id"] == iexp
+        sel = reflections.get_selection_for_experiment_identifier(exp.identifier)
         xyzobs = reflections["xyzobs.mm.value"].select(sel)
         angles = xyzobs.parts()[2]
         to_update = scan.get_array_index_from_angle(angles, deg=False)
@@ -303,7 +303,7 @@ def set_obs_s1(reflections, experiments):
     for i_expt, expt in enumerate(experiments):
         detector = expt.detector
         beam = expt.beam
-        expt_sel = reflections["id"] == i_expt
+        expt_sel = reflections.get_selection_for_experiment_identifier(expt.identifier)
         for i_panel, panel in enumerate(detector):
             panel_sel = reflections["panel"] == i_panel
             isel = (expt_sel & panel_sel & refs_wo_s1_sel).iselection()

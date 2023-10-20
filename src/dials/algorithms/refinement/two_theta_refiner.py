@@ -39,7 +39,8 @@ def calc_2theta(reflections, experiments):
 
     twotheta = flex.double(len(reflections), 0.0)
     for iexp, exp in enumerate(experiments):
-        isel = (reflections["id"] == iexp).iselection()
+        sel = reflections.get_selection_for_experiment_identifier(exp.identifier)
+        isel = sel.iselection()
         sub_ref = reflections.select(isel)
         s0 = matrix.col(exp.beam.get_s0())
         for ipanel in range(len(exp.detector)):

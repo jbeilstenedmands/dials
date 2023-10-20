@@ -79,7 +79,7 @@ class ExperimentsPredictor:
         for iexp, e in enumerate(self._experiments):
 
             # select the reflections for this experiment only
-            sel = reflections["id"] == iexp
+            sel = reflections.get_selection_for_experiment_identifier(e.identifier)
             refs = reflections.select(sel)
 
             self._predict_one_experiment(e, refs)
@@ -140,7 +140,7 @@ class ScansExperimentsPredictor(ExperimentsPredictor):
 
         # Update xyzcal.px with the correct z_px values in keeping with above
         for iexp, e in enumerate(self._experiments):
-            sel = reflections["id"] == iexp
+            sel = reflections.get_selection_for_experiment_identifier(e.identifier)
             x_px, y_px, z_px = reflections["xyzcal.px"].select(sel).parts()
             scan = e.scan
             if scan is not None:

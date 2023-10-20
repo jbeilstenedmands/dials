@@ -93,12 +93,15 @@ class CentroidOutlier:
         all_data = reflections.select(sel)
         all_data_indices = sel.iselection()
         nexp = flex.max(all_data["id"]) + 1
+        identifiers = list(reflections.experiment_identifiers().values())
 
         jobs = []
         if self._separate_experiments:
             # split the data set by experiment id
             for iexp in range(nexp):
-                sel = all_data["id"] == iexp
+                sel = all_data.get_selection_for_experiment_identifier(
+                    identifiers[iexp]
+                )
                 job = {
                     "id": iexp,
                     "panel": "all",

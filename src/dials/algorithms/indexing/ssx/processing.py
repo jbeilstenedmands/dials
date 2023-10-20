@@ -169,7 +169,8 @@ def wrap_index_one(input_to_index: InputToIndex) -> IndexingResult:
             n_strong=n_strong,
         )
         for id_, identifier in table.experiment_identifiers():
-            selr = table.select(table["id"] == id_)
+            sel = table.get_selection_for_experiment_identifier(identifier)
+            selr = table.select(sel)
             calx, caly, _ = selr["xyzcal.px"].parts()
             obsx, obsy, _ = selr["xyzobs.px.value"].parts()
             delpsi = selr["delpsical.rad"]

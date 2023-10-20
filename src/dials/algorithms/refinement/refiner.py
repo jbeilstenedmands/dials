@@ -937,10 +937,10 @@ class Refiner:
             except (AttributeError, ZeroDivisionError):
                 images_per_rad = None
 
-            raw_rmsds = self._target.rmsds_for_experiment(iexp)
+            raw_rmsds = self._target.rmsds_for_experiment(exp)
             if raw_rmsds is None:
                 continue  # skip experiments where rmsd cannot be calculated
-            num = self._target.get_num_matches_for_experiment(iexp)
+            num = self._target.get_num_matches_for_experiment(exp)
             rmsds = []
             for (name, units, rmsd) in zip(
                 self._target.rmsd_names, self._target.rmsd_units, raw_rmsds

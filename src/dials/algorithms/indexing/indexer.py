@@ -666,13 +666,17 @@ class Indexer:
                         had_refinement_error = True
                         logger.info("Refinement failed:")
                         logger.info(e)
-                        del experiments[-1]
 
                         # remove experiment id from the reflections associated
                         # with this deleted experiment - indexed flag removed
                         # below
                         last = len(experiments)
-                        sel = refined_reflections["id"] == last
+                        sel = (
+                            refined_reflections.get_selection_for_experiment_identifier(
+                                experiments[-1].identifier
+                            )
+                        )
+                        del experiments[-1]
                         logger.info(
                             "Removing %d reflections with id %d", sel.count(True), last
                         )
@@ -778,13 +782,12 @@ class Indexer:
                 if expt.crystal is not cryst:
                     continue
                 if not cb_op.is_identity_op():
-                    miller_indices = reflections["miller_index"].select(
-                        reflections["id"] == i_expt
+                    sel = reflections.get_selection_for_experiment_identifier(
+                        expt.identifier
                     )
+                    miller_indices = reflections["miller_index"].select(sel)
                     miller_indices = cb_op.apply(miller_indices)
-                    reflections["miller_index"].set_selected(
-                        reflections["id"] == i_expt, miller_indices
-                    )
+                    reflections["miller_index"].set_selected(sel, miller_indices)
 
     def _check_have_similar_crystal_models(self, experiments):
         """
@@ -853,10 +856,11 @@ class Indexer:
             d_spacings = 1 / reciprocal_lattice_points.norms()
             reflections = reflections.select(d_spacings > d_min)
         for i_expt, expt in enumerate(experiments):
+            sel = reflections.get_selection_for_experiment_identifier(expt.identifier)
             logger.info(
                 "model %i (%i reflections):",
                 i_expt + 1,
-                (reflections["id"] == i_expt).count(True),
+                sel.count(True),
             )
             logger.info(expt.crystal)
 

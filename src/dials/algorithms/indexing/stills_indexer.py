@@ -203,9 +203,10 @@ class StillsIndexer(Indexer):
                 )
 
                 for expt_id, experiment in enumerate(experiments):
-                    reflections = reflections_for_refinement.select(
-                        reflections_for_refinement["id"] == expt_id
+                    sel = reflections_for_refinement.get_selection_for_experiment_identifier(
+                        experiment.identifier
                     )
+                    reflections = reflections_for_refinement.select(sel)
                     reflections["id"] = flex.int(len(reflections), 0)
                     refiners = []
                     for isoform in self.params.stills.isoforms:
@@ -327,10 +328,11 @@ class StillsIndexer(Indexer):
                 refined_reflections["delpsical2"] = (
                     refined_reflections["delpsical.rad"] ** 2
                 )
-                for expt_id in range(len(refined_experiments)):
-                    refls = refined_reflections.select(
-                        refined_reflections["id"] == expt_id
+                for expt_id, expt in enumerate(refined_experiments):
+                    sel = refined_reflections.get_selection_for_experiment_identifier(
+                        expt.identifier
                     )
+                    refls = refined_reflections.select(sel)
                     nv = NaveParameters(
                         params=self.all_params,
                         experiments=refined_experiments[expt_id : expt_id + 1],

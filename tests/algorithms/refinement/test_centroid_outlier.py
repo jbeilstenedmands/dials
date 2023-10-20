@@ -25,6 +25,7 @@ def test_centroid_outlier(dials_data, method, colnames, expected_nout):
     residuals = flex.reflection_table.from_file(
         data_dir / "centroid_outlier_residuals.refl"
     )
+    residuals.experiment_identifiers()[0] = "a"
     params = phil_scope.extract()
     params.outlier.algorithm = method
     params.outlier.sauter_poon.px_sz = (0.1, 0.1)  # must be set for SauterPoon
