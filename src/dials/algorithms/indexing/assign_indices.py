@@ -27,7 +27,8 @@ class AssignIndicesGlobal(AssignIndicesStrategy):
             inside_resolution_limit = d_spacings > d_min
         else:
             inside_resolution_limit = flex.bool(reciprocal_lattice_points.size(), True)
-        sel = inside_resolution_limit & (reflections["id"] == -1)
+        unindexed = ~reflections.get_flags(reflections.flags.indexed)
+        sel = inside_resolution_limit & unindexed
         isel = sel.iselection()
         rlps = reciprocal_lattice_points.select(isel)
         refs = reflections.select(isel)
@@ -63,6 +64,9 @@ class AssignIndicesGlobal(AssignIndicesStrategy):
                 isel.select(sel_imgset), miller_indices
             )
             reflections["id"].set_selected(isel.select(sel_imgset), expt_ids)
+            reflections.unset_flags(
+                flex.bool(reflections.size(), True), reflections.flags.indexed
+            )
             reflections.set_flags(
                 reflections["miller_index"] != (0, 0, 0), reflections.flags.indexed
             )
@@ -91,7 +95,8 @@ class AssignIndicesLocal(AssignIndicesStrategy):
             inside_resolution_limit = d_spacings > d_min
         else:
             inside_resolution_limit = flex.bool(reciprocal_lattice_points.size(), True)
-        sel = inside_resolution_limit & (reflections["id"] == -1)
+        unindexed = ~reflections.get_flags(reflections.flags.indexed)
+        sel = inside_resolution_limit & unindexed
         isel = sel.iselection()
         rlps = reciprocal_lattice_points.select(isel)
         refs = reflections.select(isel)
@@ -152,6 +157,9 @@ class AssignIndicesLocal(AssignIndicesStrategy):
 
         reflections["miller_index"].set_selected(isel, refs["miller_index"])
         reflections["id"].set_selected(isel, refs["id"])
+        reflections.unset_flags(
+            flex.bool(reflections.size(), True), reflections.flags.indexed
+        )
         reflections.set_flags(
             reflections["miller_index"] != (0, 0, 0), reflections.flags.indexed
         )

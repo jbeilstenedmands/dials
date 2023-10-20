@@ -152,6 +152,10 @@ class StillsIndexer(Indexer):
             # the lattice a given reflection belongs to: a value of -1 indicates
             # that a reflection doesn't belong to any lattice so far
             self.reflections["id"] = flex.int(len(self.reflections), -1)
+            self.reflections.unset_flags(
+                flex.bool(len(self.reflections), True),
+                self.reflections.flags.indexed,
+            )
 
             self.index_reflections(experiments, self.reflections)
 
@@ -171,15 +175,17 @@ class StillsIndexer(Indexer):
             if self._check_have_similar_crystal_models(experiments):
                 break
 
-            self.indexed_reflections = self.reflections["id"] > -1
+            self.indexed_reflections = self.reflections.get_flags(
+                self.reflections.flags.indexed
+            )
             if self.d_min is None:
-                sel = self.reflections["id"] <= -1
+                sel = ~self.indexed_reflections
             else:
                 sel = flex.bool(len(self.reflections), False)
                 lengths = 1 / self.reflections["rlp"].norms()
                 isel = (lengths >= self.d_min).iselection()
                 sel.set_selected(isel, True)
-                sel.set_selected(self.reflections["id"] > -1, False)
+                sel.set_selected(~self.indexed_reflections, True)
             self.unindexed_reflections = self.reflections.select(sel)
 
             reflections_for_refinement = self.reflections.select(
@@ -371,7 +377,7 @@ class StillsIndexer(Indexer):
             self._unit_cell_volume_sanity_check(experiments, refined_experiments)
 
             self.refined_reflections = refined_reflections.select(
-                refined_reflections["id"] > -1
+                refined_reflections.get_flags(refined_reflections.flags.indexed)
             )
 
             for i, expt in enumerate(self.experiments):

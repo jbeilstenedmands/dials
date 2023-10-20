@@ -187,7 +187,7 @@ class LatticeSearch(indexer.Indexer):
         args = []
 
         for cm in candidate_orientation_matrices:
-            sel = self.reflections["id"] == -1
+            sel = ~self.reflections.get_flags(self.reflections.flags.indexed)
             if self.d_min is not None:
                 sel &= 1 / self.reflections["rlp"].norms() > self.d_min
             xo, yo, zo = self.reflections["xyzobs.mm.value"].parts()
@@ -328,7 +328,7 @@ class BasisVectorSearch(LatticeSearch):
 
     def find_candidate_basis_vectors(self):
         self.d_min = self.params.refinement_protocol.d_min_start
-        sel = self.reflections["id"] == -1
+        sel = ~self.reflections.get_flags(self.reflections.flags.indexed)
         if self.d_min is not None:
             sel &= 1 / self.reflections["rlp"].norms() > self.d_min
         reflections = self.reflections.select(sel)

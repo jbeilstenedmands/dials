@@ -535,11 +535,12 @@ class Indexer:
                 min_reflections_for_indexing = cutoff_fraction * len(
                     self.reflections.select(d_spacings > d_min_indexed)
                 )
-                crystal_ids = self.reflections.select(d_spacings > d_min_indexed)["id"]
-                if (crystal_ids == -1).count(True) < min_reflections_for_indexing:
+                sel_refls = self.reflections.select(d_spacings > d_min_indexed)
+                unindexed = ~sel_refls.get_flags(sel_refls.flags.indexed)
+                if unindexed.count(True) < min_reflections_for_indexing:
                     logger.info(
                         "Finish searching for more lattices: %i unindexed reflections remaining.",
-                        (crystal_ids == -1).count(True),
+                        unindexed.count(True),
                     )
                     break
 
@@ -602,6 +603,10 @@ class Indexer:
                 # the lattice a given reflection belongs to: a value of -1 indicates
                 # that a reflection doesn't belong to any lattice so far
                 self.reflections["id"] = flex.int(len(self.reflections), -1)
+                self.reflections.unset_flags(
+                    flex.bool(len(self.reflections), True),
+                    self.reflections.flags.indexed,
+                )
 
                 self.index_reflections(experiments, self.reflections)
 
@@ -622,7 +627,9 @@ class Indexer:
                 logger.info("Starting refinement (macro-cycle %i)", i_cycle + 1)
                 logger.info("#" * 80)
                 logger.info("")
-                self.indexed_reflections = self.reflections["id"] > -1
+                self.indexed_reflections = self.reflections.get_flags(
+                    self.reflections.flags.indexed
+                )
 
                 sel = flex.bool(len(self.reflections), False)
                 lengths = 1 / self.reflections["rlp"].norms()
@@ -681,7 +688,9 @@ class Indexer:
                             "Removing %d reflections with id %d", sel.count(True), last
                         )
                         refined_reflections["id"].set_selected(sel, -1)
-
+                        refined_reflections.unset_flags(
+                            sel.iselection(), refined_reflections.flags.indexed
+                        )
                         break
 
                 self._unit_cell_volume_sanity_check(experiments, refined_experiments)
@@ -860,7 +869,7 @@ class Indexer:
             logger.info(
                 "model %i (%i reflections):",
                 i_expt + 1,
-                sel.count(True),
+                (sel & reflections.get_flags(reflections.flags.indexed)).count(True),
             )
             logger.info(expt.crystal)
 
@@ -919,6 +928,7 @@ class Indexer:
         refiner, refined, outliers = refine(self.all_params, reflections, experiments)
         if outliers is not None:
             reflections["id"].set_selected(outliers, -1)
+            reflections.unset_flags(outliers, reflections.flags.indexed)
         predicted = refiner.predict_for_indexed()
         reflections["xyzcal.mm"] = predicted["xyzcal.mm"]
         reflections["entering"] = predicted["entering"]

@@ -285,6 +285,9 @@ def test_local_multiple_rotations(dials_data):
     # Reset miller indices and re-map to reciprocal space
     reflections["miller_index"] = flex.miller_index(len(reflections), (0, 0, 0))
     reflections["id"] = flex.int(len(reflections), -1)
+    reflections.unset_flags(
+        flex.bool(reflections.size(), True), reflections.flags.indexed
+    )
     reflections.centroid_px_to_mm(experiments)
     reflections.map_centroids_to_reciprocal_space(experiments)
 
