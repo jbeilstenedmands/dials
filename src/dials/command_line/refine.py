@@ -508,7 +508,12 @@ def run_dials_refine(experiments, reflections, params):
         table_rows = {}
         for (el, refl, refiner, _), ids in zip(refinement_results, disjoint_sets):
             header, rows = refiner.calc_exp_rmsd_table()
+            for new_id, orig_id in enumerate(ids):
+                experiments[orig_id] = el[new_id]
+                rows[new_id][0] = str(orig_id)
+                table_rows[orig_id] = rows[new_id]
             table_headers.append(header)
+
         reflections = flex.reflection_table.concat([i[1] for i in refinement_results])
 
         experiments = ExperimentList([experiments[i] for i in range(len(experiments))])
@@ -603,13 +608,35 @@ def run(args=None, phil=working_phil):
         logger.info("The following parameters have been modified:\n")
         logger.info(diff_phil)
 
+    if not all(experiments.identifiers()):
+        from dials.util.multi_dataset_handling import generate_experiment_identifiers
+
+        generate_experiment_identifiers(experiments)
+        for i, expt in enumerate(experiments):
+            reflections.experiment_identifiers()[i] = expt.identifier
+
+    experiments_to_refine = ExperimentList([e for e in experiments if e.crystal])
+    experiments = ExperimentList([e for e in experiments if not e.crystal])
+    reflections_to_refine = reflections.select_on_experiment_identifiers(
+        experiments_to_refine.identifiers()
+    )
+    reflections_to_refine.reset_ids()
+    reflections = reflections.select_on_experiment_identifiers(
+        experiments.identifiers()
+    )
+
     # Run refinement
     try:
-        experiments, reflections, refiner, history = run_dials_refine(
-            experiments, reflections, params
-        )
+        (
+            experiments_to_refine,
+            reflections_to_refine,
+            refiner,
+            history,
+        ) = run_dials_refine(experiments_to_refine, reflections_to_refine, params)
     except (DialsRefineConfigError, DialsRefineRuntimeError) as e:
         sys.exit(str(e))
+    experiments.extend(experiments_to_refine)
+    reflections = flex.reflection_table.concat([reflections, reflections_to_refine])
 
     # For the usual case of refinement of one crystal, print that model for information
     crystals = experiments.crystals()

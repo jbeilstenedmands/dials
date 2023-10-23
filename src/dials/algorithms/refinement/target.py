@@ -525,7 +525,7 @@ class Target:
         """calculate unweighted RMSDs for the selected experiment."""
 
         self.update_matches()
-        sel = self._matches.get_selection_for_experiment_identifier(exp)
+        sel = self._matches.get_selection_for_experiment_identifier(exp.identifier)
         n = sel.count(True)
         if n == 0:
             return None

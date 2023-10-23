@@ -109,6 +109,7 @@ def _index_experiments(
 ):
     if log_text:
         logger.info(log_text)
+    reflections["original_id"] = copy.deepcopy(reflections["id"])
     idxr = indexer.Indexer.from_parameters(
         reflections,
         experiments,
@@ -117,8 +118,20 @@ def _index_experiments(
     )
     idxr.index()
     idx_refl = copy.deepcopy(idxr.refined_reflections)
+    n_unindex = len(experiments)
+    idxr.unindexed_reflections["id"] = idxr.unindexed_reflections["original_id"]
+    for i, expt in enumerate(experiments):
+        idxr.unindexed_reflections.experiment_identifiers()[i] = expt.identifier
+    for id_ in sorted(set(idx_refl["id"]), reverse=True):
+        identifier = idx_refl.experiment_identifiers()[id_]
+        del idx_refl.experiment_identifiers()[id_]
+        idx_refl.experiment_identifiers()[id_ + n_unindex] = identifier
+
+    idx_refl["id"] += n_unindex
     idx_refl.extend(idxr.unindexed_reflections)
-    return idxr.refined_experiments, idx_refl
+    del idx_refl["original_id"]
+    experiments.extend(idxr.refined_experiments)
+    return experiments, idx_refl
 
 
 def index(experiments, reflections, params):
