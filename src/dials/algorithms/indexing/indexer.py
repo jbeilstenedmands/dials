@@ -669,7 +669,13 @@ class Indexer:
                             "Removing %d reflections with id %d", sel.count(True), last
                         )
                         refined_reflections["id"].set_selected(sel, -1)
-
+                        refined_reflections.unset_flags(
+                            sel.iselection(), refined_reflections.flags.indexed
+                        )
+                        self.unindexed_reflections.extend(
+                            refined_reflections.select(sel)
+                        )
+                        refined_reflections.del_selected(sel)
                         break
 
                 self._unit_cell_volume_sanity_check(experiments, refined_experiments)

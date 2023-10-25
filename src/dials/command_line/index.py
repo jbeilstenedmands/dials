@@ -102,6 +102,7 @@ refinement {
 )
 
 working_phil = phil_scope.fetch(sources=[phil_overrides])
+from dials.util.multi_dataset_handling import generate_experiment_identifiers
 
 
 def _index_experiments(
@@ -109,16 +110,67 @@ def _index_experiments(
 ):
     if log_text:
         logger.info(log_text)
+
+    if not all(experiments.identifiers()):
+        generate_experiment_identifiers(experiments)
+        for i, exp in enumerate(experiments):
+            reflections.experiment_identifiers()[i] = exp.identifier
+
+    reflections["id"] = copy.deepcopy(reflections["imageset_id"])
+    reflections["original_id"] = copy.deepcopy(reflections["id"])
+    reflections.reset_ids()  ### really?
+
+    unindexed_input = ExperimentList([e for e in experiments if e.crystal is None])
+
+    if known_crystal_models:
+        # we only want to pass the experiments with crystals
+        input_expts = ExperimentList(
+            [e for e, c in zip(experiments, known_crystal_models) if c]
+        )
+        known_crystal_models = [c for c in known_crystal_models if c]
+        if not unindexed_input:
+            # old style indexed.expt - need to create a null experiment for each imageset.
+            imagesets = experiments.imagesets()
+            for iset in imagesets:
+                iexpt = experiments.where(imageset=iset)[0]
+                expt_copy = copy.deepcopy(experiments[iexpt])
+                expt_copy.crystal = None
+                unindexed_input.append(expt_copy)
+    else:
+        input_expts = experiments
+
+    # if we have a known crystal model, then we need to provide indexed experiments and models
+    # else, we just provide the unindexed experiments.
+    # The reflection ids don't matter as these get reset
     idxr = indexer.Indexer.from_parameters(
         reflections,
-        experiments,
+        input_expts,
         known_crystal_models=known_crystal_models,
         params=params,
     )
     idxr.index()
+
     idx_refl = copy.deepcopy(idxr.refined_reflections)
+    n_unindex = len(unindexed_input)
+    # renumber unindexed reflections ids.
+    idxr.unindexed_reflections["id"] = idxr.unindexed_reflections["original_id"]
+    idxr.unindexed_reflections.clean_experiment_identifiers_map()
+    idxr.unindexed_reflections.reset_ids()
+
+    for i, expt in enumerate(unindexed_input):
+        idxr.unindexed_reflections.experiment_identifiers()[i] = expt.identifier
+    for id_ in sorted(set(idx_refl["id"]), reverse=True):
+        identifier = idx_refl.experiment_identifiers()[id_]
+        del idx_refl.experiment_identifiers()[id_]
+        idx_refl.experiment_identifiers()[id_ + n_unindex] = identifier
+
+    idx_refl["id"] += n_unindex
     idx_refl.extend(idxr.unindexed_reflections)
-    return idxr.refined_experiments, idx_refl
+    del idx_refl["original_id"]
+
+    unindexed_input.extend(idxr.refined_experiments)
+    idx_refl.assert_experiment_identifiers_are_consistent(unindexed_input)
+    return unindexed_input, idx_refl
 
 
 def index(experiments, reflections, params):
@@ -141,7 +193,7 @@ def index(experiments, reflections, params):
                     combination of sequence and stills data.
         dials.algorithms.indexing.DialsIndexError: Indexing failed.
     """
-    if experiments.crystals()[0] is not None:
+    if any(expt.crystal is not None for expt in experiments):
         # note not just experiments.crystals(), as models may be shared.
         known_crystal_models = [expt.crystal for expt in experiments]
     else:
@@ -179,7 +231,8 @@ def index(experiments, reflections, params):
             futures = []
             for i_expt, expt in enumerate(experiments):
                 refl = reflections.select(reflections["imageset_id"] == i_expt)
-                refl["imageset_id"] = flex.size_t(len(refl), 0)
+                # FIXME - if multi crystal and already indexed, then surely this imageset sel doesn't work?
+                refl["imageset_id"] = flex.int(len(refl), 0)
                 futures.append(
                     pool.submit(
                         _index_experiments,
