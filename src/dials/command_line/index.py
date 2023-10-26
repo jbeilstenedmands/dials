@@ -106,7 +106,12 @@ from dials.util.multi_dataset_handling import generate_experiment_identifiers
 
 
 def _index_experiments(
-    experiments, reflections, params, known_crystal_models=None, log_text=None
+    experiments,
+    reflections,
+    params,
+    known_crystal_models=None,
+    log_text=None,
+    original_imageset_id=0,
 ):
     if log_text:
         logger.info(log_text)
@@ -170,7 +175,7 @@ def _index_experiments(
 
     unindexed_input.extend(idxr.refined_experiments)
     idx_refl.assert_experiment_identifiers_are_consistent(unindexed_input)
-    return unindexed_input, idx_refl
+    return unindexed_input, idx_refl, original_imageset_id
 
 
 def index(experiments, reflections, params):
@@ -241,12 +246,13 @@ def index(experiments, reflections, params):
                         copy.deepcopy(params),
                         known_crystal_models=known_crystal_models,
                         log_text=f"Indexing experiment id {i_expt} ({i_expt + 1}/{len(experiments)})",
+                        original_imageset_id=i_expt,
                     )
                 )
             tables_list = []
             for future in concurrent.futures.as_completed(futures):
                 try:
-                    idx_expts, idx_refl = future.result()
+                    idx_expts, idx_refl, i_expt = future.result()
                 except Exception as e:
                     print(e)
                 else:
@@ -256,7 +262,7 @@ def index(experiments, reflections, params):
                     # experiments already in the list
                     ##FIXME below, is i_expt correct - or should it be the
                     # index of the 'future'?
-                    idx_refl["imageset_id"] = flex.size_t(idx_refl.size(), i_expt)
+                    idx_refl["imageset_id"] = flex.int(idx_refl.size(), i_expt)
                     tables_list.append(idx_refl)
                     indexed_experiments.extend(idx_expts)
         indexed_reflections = flex.reflection_table.concat(tables_list)
