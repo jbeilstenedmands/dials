@@ -631,8 +631,13 @@ def test_refinement_failure_on_max_lattices_a15(dials_data, tmp_path):
     assert len(experiments_list) == 2
 
 
+import pathlib
+
+
 def test_index_multi_lattice_multi_sweep(dials_data, tmp_path):
-    loc = dials_data("semisynthetic_multilattice", pathlib=True)
+    loc = pathlib.Path(
+        "/Users/whi10850/dials/modules/data-files/semisynthetic_multilattice_2"
+    )
     result = subprocess.run(
         [
             shutil.which("dials.index"),
