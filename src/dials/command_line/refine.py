@@ -607,13 +607,34 @@ def run(args=None, phil=working_phil):
         logger.info("The following parameters have been modified:\n")
         logger.info(diff_phil)
 
-    # Run refinement
+    crystalless_expts = [expt if not expt.crystal else None for expt in experiments]
+    crystal_locs = [i for i, expt in enumerate(experiments) if expt.crystal]
+    crystalless_refls = [
+        reflections.select_on_experiment_identifiers([expt.identifier])
+        if expt
+        else None
+        for expt in crystalless_expts
+    ]
+    experiments = ExperimentList([expt for expt in experiments if expt.crystal])
+    reflections = reflections.select_on_experiment_identifiers(
+        experiments.identifiers()
+    )
+    reflections.reset_ids()
+
     try:
         experiments, reflections, refiner, history = run_dials_refine(
             experiments, reflections, params
         )
     except (DialsRefineConfigError, DialsRefineRuntimeError) as e:
         sys.exit(str(e))
+
+    tables = reflections.split_by_experiment_id()
+    for i, expt, table in zip(crystal_locs, experiments, tables):
+        crystalless_expts[i] = expt
+        crystalless_refls[i] = table
+    experiments = ExperimentList(crystalless_expts)
+    reflections = flex.reflection_table.concat(crystalless_refls)
+    reflections.assert_experiment_identifiers_are_consistent(experiments)
 
     # For the usual case of refinement of one crystal, print that model for information
     crystals = experiments.crystals()
