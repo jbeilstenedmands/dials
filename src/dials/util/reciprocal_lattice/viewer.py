@@ -422,6 +422,7 @@ class SettingsWindow(wxtbx.utils.SettingsPanel):
 
     def add_experiments_buttons(self):
         n = flex.max(self.parent.reflections_input["id"])
+        m = flex.min(self.parent.reflections_input["id"])
         if n <= 0 or n > self.settings.max_experiments:
             self.expt_btn = None
             return
@@ -432,13 +433,13 @@ class SettingsWindow(wxtbx.utils.SettingsPanel):
         box.Add(label, 0, wx.ALL, 5)
 
         self.expt_btn = SegmentedToggleControl(self, style=SEGBTN_HORIZONTAL)
-        for i in range(-1, n + 1):
+        for i in range(m, n + 1):
             self.expt_btn.AddSegment(str(i))
             if (
                 self.settings.experiment_ids is not None
                 and i in self.settings.experiment_ids
             ):
-                self.expt_btn.SetValue(i + 1, True)
+                self.expt_btn.SetValue(i, True)
 
         self.expt_btn.Realize()
         self.Bind(wx.EVT_TOGGLEBUTTON, self.OnChangeSettings, self.expt_btn)
@@ -480,7 +481,7 @@ class SettingsWindow(wxtbx.utils.SettingsPanel):
             expt_ids = []
             for i in range(len(self.expt_btn.segments)):
                 if self.expt_btn.GetValue(i):
-                    expt_ids.append(i - 1)
+                    expt_ids.append(i)
             self.settings.experiment_ids = expt_ids
 
         try:
@@ -595,12 +596,13 @@ class RLVWindow(wx_viewer.show_points_and_lines_mixin):
 
             if vectors:
                 for i, axes in enumerate(vectors):
-                    if self.settings.experiment_ids:
-                        if i not in self.settings.experiment_ids:
-                            continue
-                    j = (i + 1) % self.palette.size()
-                    color = self.palette[j]
-                    self.draw_cell(axes, color)
+                    if axes is not None:
+                        if self.settings.experiment_ids:
+                            if i not in self.settings.experiment_ids:
+                                continue
+                        j = i % self.palette.size()
+                        color = self.palette[j]
+                        self.draw_cell(axes, color)
 
         if self.settings.label_nearest_point:
             self.label_nearest_point()
