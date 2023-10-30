@@ -68,12 +68,17 @@ def run_indexing(
     assert out_refls.is_file()
 
     experiments_list = load.experiment_list(out_expts, check_format=False)
-    assert len(experiments_list.crystals()) == n_expected_lattices
+    assert (
+        len([c for c in experiments_list.crystals() if c is not None])
+        == n_expected_lattices
+    )
     indexed_reflections = flex.reflection_table.from_file(out_refls)
     indexed_reflections.assert_experiment_identifiers_are_consistent(experiments_list)
     rmsds = None
 
     for i, experiment in enumerate(experiments_list):
+        if experiment.crystal is None:
+            continue
         assert unit_cells_are_similar(
             experiment.crystal.get_unit_cell(),
             expected_unit_cell,
@@ -609,7 +614,7 @@ def test_refinement_failure_on_max_lattices_a15(dials_data, tmp_path):
     experiments_list = load.experiment_list(
         tmp_path / "indexed.expt", check_format=False
     )
-    assert len(experiments_list) == 2
+    assert len(experiments_list) == 3
 
     # now try to reindex with existing model
     result = subprocess.run(
@@ -628,7 +633,7 @@ def test_refinement_failure_on_max_lattices_a15(dials_data, tmp_path):
     experiments_list = load.experiment_list(
         tmp_path / "indexed.expt", check_format=False
     )
-    assert len(experiments_list) == 2
+    assert len(experiments_list) == 3
 
 
 def test_index_multi_lattice_multi_sweep(dials_data, tmp_path):
@@ -932,8 +937,8 @@ def test_multi_lattice_multi_sweep_joint(dials_data, tmp_path):
 
     expts = ExperimentList.from_file(tmp_path / "indexed.expt", check_format=False)
     refls = flex.reflection_table.from_file(tmp_path / "indexed.refl")
-    assert len(expts) == 4
-    assert len(expts.crystals()) == 1
+    assert len(expts) == 8
+    assert len([c for c in expts.crystals() if c is not None]) == 1
     refls.assert_experiment_identifiers_are_consistent(expts)
 
     # now force it to find a second shared lattice
@@ -954,6 +959,6 @@ def test_multi_lattice_multi_sweep_joint(dials_data, tmp_path):
 
     expts = ExperimentList.from_file(tmp_path / "indexed.expt", check_format=False)
     refls = flex.reflection_table.from_file(tmp_path / "indexed.refl")
-    assert len(expts) == 8
-    assert len(expts.crystals()) == 2
+    assert len(expts) == 12
+    assert len([c for c in expts.crystals() if c is not None]) == 2
     refls.assert_experiment_identifiers_are_consistent(expts)

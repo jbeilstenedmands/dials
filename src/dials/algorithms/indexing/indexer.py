@@ -673,7 +673,10 @@ class Indexer:
                                 sel.count(True),
                                 model_id,
                             )
-                            refined_reflections["id"].set_selected(sel, -1)
+                            self.unindexed_reflections.extend(
+                                refined_reflections.select(sel)
+                            )
+                            refined_reflections.del_selected(sel)
 
                         break
 
