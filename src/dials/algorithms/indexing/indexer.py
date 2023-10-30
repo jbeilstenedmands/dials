@@ -680,6 +680,9 @@ class Indexer:
                             refined_reflections.unset_flags(
                                 sel, refined_reflections.flags.indexed
                             )
+                            refined_reflections["miller_index"].set_selected(
+                                sel, (0, 0, 0)
+                            )
                             self.unindexed_reflections.extend(
                                 refined_reflections.select(sel)
                             )

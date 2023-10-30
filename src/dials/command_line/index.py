@@ -154,8 +154,17 @@ def _index_experiments(
     idxr.unindexed_reflections["id"] = idxr.unindexed_reflections["original_id"]
     idxr.unindexed_reflections.clean_experiment_identifiers_map()
     idxr.unindexed_reflections.reset_ids()
-    for i, expt in enumerate(unindexed_input):
+    # set identifiers and shared models
+    for i, (expt, iset) in enumerate(zip(unindexed_input, unindexed_input.imagesets())):
         idxr.unindexed_reflections.experiment_identifiers()[i] = expt.identifier
+        a_refined_expt_id = idxr.refined_experiments.where(imageset=iset)[0]
+        refined_expt = idxr.refined_experiments[a_refined_expt_id]
+        unindexed_input[i].detector = refined_expt.detector
+        unindexed_input[i].beam = refined_expt.beam
+        if (
+            refined_expt.goniometer
+        ):  # might be using the stills indexer which deletes the gonio
+            unindexed_input[i].goniometer = refined_expt.goniometer
 
     idx_refl = copy.deepcopy(idxr.refined_reflections)
     for id_ in sorted(set(idx_refl["id"]), reverse=True):
