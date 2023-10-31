@@ -179,7 +179,7 @@ def run(args: List[str] = None, phil: phil.scope = phil_scope) -> None:
             unit_cell=expt.crystal.get_unit_cell(),
             space_group=expt.crystal.get_space_group(),
         )
-        for expt in indexed_experiments
+        for expt in indexed_experiments if expt.crystal
     ]
     if crystal_symmetries:
         cluster_plots, _ = report_on_crystal_clusters(

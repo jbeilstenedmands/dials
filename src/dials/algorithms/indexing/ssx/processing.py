@@ -12,7 +12,7 @@ from typing import Any, List, Optional, Tuple, Union
 
 import numpy as np
 
-from dxtbx.model import Crystal, Experiment, ExperimentList
+from dxtbx.model import Crystal, Experiment, ExperimentList, Scan
 from libtbx import Auto, phil
 
 from dials.algorithms.indexing import DialsIndexError
@@ -35,6 +35,8 @@ class InputToIndex:
     image_no: int = 0
     method_list: List[str] = field(default_factory=list)
     known_crystal_models: Optional[List[Crystal]] = None
+    imageset_no: int = 0
+    image_index: int = 0
 
 
 @dataclass
@@ -49,6 +51,10 @@ class IndexingResult:
     rmsd_x: List[float] = field(default_factory=list)
     rmsd_y: List[float] = field(default_factory=list)
     rmsd_dpsi: List[float] = field(default_factory=list)
+    imageset_no: int = 0
+    image_index: int = 0
+    unindexed_expt: ExperimentList = None
+    unindexed_refl: flex.reflection_table = None
 
 
 loggers_to_disable = [
@@ -120,8 +126,12 @@ def index_one(
     image_no: int,
     known_crystal_models: List[Crystal] = None,
 ) -> Union[Tuple[ExperimentList, flex.reflection_table], Tuple[bool, bool]]:
-
+    reflection_table.reset_ids()
+    n_initial = len(reflection_table)
     elist = ExperimentList([experiment])
+    if n_initial < params.min_spots:
+        return None, None, reflection_table, elist
+
     for method in method_list:
         params.indexing.method = method
         idxr = Indexer.from_parameters(
@@ -137,17 +147,41 @@ def index_one(
                 f"Image {image_no+1}: Failed to index with {method} method, error: {e}"
             )
             if method == method_list[-1]:
-                return None, None
+                reflection_table["id"] = flex.int(reflection_table.size(), 0)
+                reflection_table.experiment_identifiers()[0] = experiment.identifier
+                reflection_table.clean_experiment_identifiers_map()
+                assert (
+                    reflection_table.size() == n_initial
+                ), f"{reflection_table.size()} != {n_initial}"
+                return None, None, reflection_table, elist
         else:
             logger.info(
                 f"Image {image_no+1}: Indexed {idxr.refined_reflections.size()}/{reflection_table.size()} spots with {method} method."
             )
-            return idxr.refined_experiments, idxr.refined_reflections
+            idxr.unindexed_reflections["id"] = flex.int(
+                idxr.unindexed_reflections.size(), 0
+            )
+            idxr.unindexed_reflections.experiment_identifiers()[
+                0
+            ] = experiment.identifier
+            idxr.unindexed_reflections.clean_experiment_identifiers_map()
+
+            for id_ in sorted(set(idxr.refined_reflections["id"]), reverse=True):
+                identifier = idxr.refined_reflections.experiment_identifiers()[id_]
+                del idxr.refined_reflections.experiment_identifiers()[id_]
+                idxr.refined_reflections.experiment_identifiers()[id_] = identifier
+
+            return (
+                idxr.refined_experiments,
+                idxr.refined_reflections,
+                idxr.unindexed_reflections,
+                elist,
+            )
 
 
 def wrap_index_one(input_to_index: InputToIndex) -> IndexingResult:
     # First unpack the input and run the function
-    expts, table = index_one(
+    expts, table, unindexed_refl, unindexed_expt = index_one(
         input_to_index.experiment,
         input_to_index.reflection_table,
         input_to_index.parameters,
@@ -161,18 +195,26 @@ def wrap_index_one(input_to_index: InputToIndex) -> IndexingResult:
         input_to_index.reflection_table.flags.strong
     ).count(True)
     if expts and table:
+        unindexed_refl.assert_experiment_identifiers_are_consistent(unindexed_expt)
+        table.assert_experiment_identifiers_are_consistent(expts)
         result = IndexingResult(
             input_to_index.image_identifier,
             input_to_index.image_no,
             table,
             expts,
             n_strong=n_strong,
+            imageset_no=input_to_index.imageset_no,
+            image_index=input_to_index.image_index,
+            unindexed_refl=unindexed_refl,
+            unindexed_expt=unindexed_expt,
         )
         for id_, identifier in table.experiment_identifiers():
             selr = table.select(table["id"] == id_)
             calx, caly, _ = selr["xyzcal.px"].parts()
             obsx, obsy, _ = selr["xyzobs.px.value"].parts()
-            delpsi = selr["delpsical.rad"]
+            delpsi = flex.double(calx.size(), 1.0)
+            if "delpsical.rad" in selr:
+                delpsi = selr["delpsical.rad"]
             rmsd_x = flex.mean((calx - obsx) ** 2) ** 0.5
             rmsd_y = flex.mean((caly - obsy) ** 2) ** 0.5
             rmsd_z = flex.mean(((delpsi) * RAD2DEG) ** 2) ** 0.5
@@ -183,10 +225,17 @@ def wrap_index_one(input_to_index: InputToIndex) -> IndexingResult:
             result.rmsd_dpsi.append(rmsd_z)
             result.identifiers.append(identifier)
     else:
+        unindexed_refl.experiment_identifiers()[0] = unindexed_expt[
+            0
+        ].identifier  # bug in stills indexer?
+        unindexed_refl.assert_experiment_identifiers_are_consistent(unindexed_expt)
         result = IndexingResult(
             input_to_index.image_identifier,
             input_to_index.image_no,
             n_strong=n_strong,
+            image_index=input_to_index.image_index,
+            unindexed_refl=unindexed_refl,
+            unindexed_expt=unindexed_expt,
         )
 
     # If chosen, output a message to json to show live progress
@@ -222,36 +271,25 @@ def index_all_concurrent(
 
     # Create a suitable iterable for passing to pool.map
     n = 0
-    for iset in experiments.imagesets():
+    original_isets = list(experiments.imagesets())
+    for n_iset, iset in enumerate(experiments.imagesets()):
         for i in range(len(iset)):
             refl_index = i + n
-            if reflections[refl_index]:
-                expt = experiments[refl_index]
-                scan = iset.get_scan()
-                if scan:
-                    idx_0 = i  # slicing index
-                    new_iset = iset[idx_0 : idx_0 + 1]
-                    expt.imageset = new_iset
-                input_iterable.append(
-                    InputToIndex(
-                        reflection_table=reflections[refl_index],
-                        experiment=expt,
-                        parameters=params,
-                        image_identifier=pathlib.Path(
-                            iset.get_image_identifier(i)
-                        ).name,
-                        image_no=refl_index,
-                        method_list=method_list,
-                    )
+            expt = experiments[refl_index]
+            scan = iset.get_scan()
+            offset = scan.get_image_range()[0]
+            input_iterable.append(
+                InputToIndex(
+                    reflection_table=reflections[refl_index],
+                    experiment=expt,
+                    parameters=params,
+                    image_identifier=pathlib.Path(iset.get_image_identifier(i)).name,
+                    image_no=refl_index,
+                    method_list=method_list,
+                    imageset_no=n_iset,
+                    image_index=i + offset,
                 )
-            else:  # experiments that have already been filtered
-                results_summary[refl_index].append(
-                    {
-                        "Image": pathlib.Path(iset.get_image_identifier(i)).name,
-                        "n_indexed": 0,
-                        "n_strong": 0,
-                    }
-                )
+            )
         n += len(iset)
 
     with open(os.devnull, "w") as devnull:
@@ -273,7 +311,11 @@ def index_all_concurrent(
 
     sys.stdout = sys.__stdout__
     # prepare tables for output
-    indexed_experiments, indexed_reflections = _join_indexing_results(results)
+    indexed_experiments, indexed_reflections = _join_indexing_results(
+        results,
+        experiments,
+        original_isets,
+    )
 
     results_summary = _add_results_to_summary_dict(results_summary, results)
 
@@ -282,14 +324,54 @@ def index_all_concurrent(
 
 def _join_indexing_results(
     results: List[IndexingResult],
+    experiments,
+    original_isets,
 ) -> Tuple[ExperimentList, flex.reflection_table]:
     indexed_experiments = ExperimentList()
     indexed_reflections = flex.reflection_table()
+
+    use_beam = None
+    use_gonio = None
+    if len(experiments.beams()) == 1:
+        use_beam = experiments.beams()[0]
+    if len(experiments.goniometers()) == 1:
+        use_gonio = experiments.goniometers()[0]
     n_tot = 0
     for res in results:
+        # first update unindexed expt
+        scan = Scan(
+            image_range=(res.image_index, res.image_index), oscillation=(0.0, 0.0)
+        )
+        expt = res.unindexed_expt[0]
+        expt.imageset = original_isets[res.imageset_no]
+        expt.scan = scan
+        if use_beam:
+            expt.beam = use_beam
+        if use_gonio:
+            expt.goniometer = use_gonio
+        indexed_experiments.extend(res.unindexed_expt)
+
+        table = res.unindexed_refl
+        table.reset_ids()
+        ids_map = dict(table.experiment_identifiers())
+        for k in table.experiment_identifiers().keys():
+            del table.experiment_identifiers()[k]
+        table["id"] += n_tot
+        for k, v in ids_map.items():
+            table.experiment_identifiers()[k + n_tot] = v
+        n_tot += len(ids_map.keys())
+        indexed_reflections.extend(table)
         if res.n_indexed:
-            indexed_experiments.extend(res.experiments)
+            for expt in res.experiments:
+                expt.scan = scan
+                if use_beam:
+                    expt.beam = use_beam
+                if use_gonio:
+                    expt.goniometer = use_gonio
             table = res.reflection_table
+            indexed_experiments.extend(res.experiments)
+
+            table.reset_ids()
             ids_map = dict(table.experiment_identifiers())
             for k in table.experiment_identifiers().keys():
                 del table.experiment_identifiers()[k]
@@ -366,13 +448,13 @@ def preprocess(
             if refl.size() >= params.min_spots:
                 elist = ExperimentList([experiment])
                 refl["imageset_id"] = flex.int(
-                    refl.size(), 0
+                    refl.size(),
                 )  # needed for centroid_px_to_mm
                 refl.centroid_px_to_mm(elist)
                 refl.map_centroids_to_reciprocal_space(elist)
             else:
+                # reflections[i] = None
                 n_filtered_out += 1
-                reflections[i] = None
                 filtered_out_images.append(i + 1)
         else:
             filtered_out_images.append(i + 1)
