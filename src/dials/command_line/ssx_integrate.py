@@ -292,7 +292,15 @@ def process_batch(sub_tables, sub_expts, configuration, batch_offset=0):
 
     # create iterable
     input_iterable: List[InputToIntegrate] = []
+    from dxtbx.imageset import ImageSet
+
     for i, (table, expt) in enumerate(zip(sub_tables, sub_expts)):
+        iset = expt.imageset
+        if expt.scan:
+            idx = expt.scan.get_image_range()[0]
+            subset = iset[idx : idx + 1]
+            expt.imageset = ImageSet(subset.data(), subset.indices())
+            expt.scan = None  # Needed for some aspect of integration code, unclear what exactly.
         input_iterable.append(
             InputToIntegrate(
                 configuration["process"],
@@ -425,6 +433,14 @@ def run(args: List[str] = None, phil=working_phil) -> None:
             raise Sorry(
                 "Unequal number of reflection tables and experiments after splitting"
             )
+        indexed_reflections = []
+        indexed_experiments = []
+        for expt, table in zip(experiments, reflections):
+            if expt.crystal:
+                indexed_experiments.append(expt)
+                indexed_reflections.append(table)
+        reflections = indexed_reflections
+        experiments = ExperimentList(indexed_experiments)
 
     integrated_crystal_symmetries = []
 

@@ -12,7 +12,7 @@ from typing import Any, List, Optional, Tuple, Union
 
 import numpy as np
 
-from dxtbx.model import Crystal, Experiment, ExperimentList, Scan
+from dxtbx.model import Crystal, Experiment, ExperimentList
 from libtbx import Auto, phil
 
 from dials.algorithms.indexing import DialsIndexError
@@ -272,6 +272,7 @@ def index_all_concurrent(
     # Create a suitable iterable for passing to pool.map
     n = 0
     original_isets = list(experiments.imagesets())
+    identifiers_to_scans = {expt.identifier: expt.scan for expt in experiments}
     for n_iset, iset in enumerate(experiments.imagesets()):
         for i in range(len(iset)):
             refl_index = i + n
@@ -315,6 +316,7 @@ def index_all_concurrent(
         results,
         experiments,
         original_isets,
+        identifiers_to_scans,
     )
 
     results_summary = _add_results_to_summary_dict(results_summary, results)
@@ -326,6 +328,7 @@ def _join_indexing_results(
     results: List[IndexingResult],
     experiments,
     original_isets,
+    identifiers_to_scans,
 ) -> Tuple[ExperimentList, flex.reflection_table]:
     indexed_experiments = ExperimentList()
     indexed_reflections = flex.reflection_table()
@@ -339,12 +342,10 @@ def _join_indexing_results(
     n_tot = 0
     for res in results:
         # first update unindexed expt
-        scan = Scan(
-            image_range=(res.image_index, res.image_index), oscillation=(0.0, 0.0)
-        )
         expt = res.unindexed_expt[0]
+        scan = identifiers_to_scans[expt.identifier]
         expt.imageset = original_isets[res.imageset_no]
-        expt.scan = scan
+        expt.scan = scan  # need scan to index into the imagesequence
         if use_beam:
             expt.beam = use_beam
         if use_gonio:
