@@ -746,6 +746,11 @@ def run(args=None, phil=working_phil):
 
     if reference and "shoebox" not in reference:
         sys.exit("Error: shoebox data missing from reflection table")
+    from dials.command_line.refine import _filter_experiments_with_crystals
+
+    experiments, reference, _, _, _ = _filter_experiments_with_crystals(
+        experiments, reference
+    )
 
     try:
         experiments, reflections, report = run_integration(

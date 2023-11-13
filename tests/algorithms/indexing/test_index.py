@@ -614,7 +614,7 @@ def test_refinement_failure_on_max_lattices_a15(dials_data, tmp_path):
     experiments_list = load.experiment_list(
         tmp_path / "indexed.expt", check_format=False
     )
-    assert len(experiments_list) == 3
+    assert len([c for c in experiments_list.crystals() if c is not None]) == 2
 
     # now try to reindex with existing model
     result = subprocess.run(
@@ -633,7 +633,7 @@ def test_refinement_failure_on_max_lattices_a15(dials_data, tmp_path):
     experiments_list = load.experiment_list(
         tmp_path / "indexed.expt", check_format=False
     )
-    assert len(experiments_list) == 3
+    assert len([c for c in experiments_list.crystals() if c is not None]) == 2
 
 
 def test_index_multi_lattice_multi_sweep(dials_data, tmp_path):
@@ -972,6 +972,7 @@ def test_multi_lattice_multi_sweep_joint(dials_data, tmp_path):
             dials_data("l_cysteine_dials_output", pathlib=True) / "indexed.expt",
             dials_data("l_cysteine_dials_output", pathlib=True) / "indexed.refl",
             "max_lattices=2",
+            "output.extend_input_experiments=True",
         ],
         cwd=tmp_path,
         capture_output=True,
@@ -994,6 +995,7 @@ def test_multi_lattice_multi_sweep_joint(dials_data, tmp_path):
             dials_data("l_cysteine_dials_output", pathlib=True) / "indexed.refl",
             "max_lattices=2",
             "minimum_angular_separation=0.001",
+            "output.extend_input_experiments=True",
         ],
         cwd=tmp_path,
         capture_output=True,

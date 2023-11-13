@@ -96,12 +96,25 @@ def test_run(dials_data, tmp_path):
     )
 
     assert result_old.rmsds == pytest.approx(result_new.rmsds, abs=1e-6)
-    assert result_old.experiments[
-        0
-    ].crystal.get_unit_cell().parameters() == pytest.approx(
-        result_new.experiments[0].crystal.get_unit_cell().parameters(), abs=1e-6
+    crystal_old = [c for c in result_old.experiments.crystals() if c is not None][0]
+    crystal_new = [c for c in result_new.experiments.crystals() if c is not None][0]
+    assert crystal_old.get_unit_cell().parameters() == pytest.approx(
+        crystal_new.get_unit_cell().parameters(), abs=1e-6
     )
-
+    identifier_old = [
+        id_
+        for (c, id_) in zip(
+            result_old.experiments.crystals(), result_old.experiments.identifiers()
+        )
+        if c is not None
+    ][0]
+    identifier_new = [
+        id_
+        for (c, id_) in zip(
+            result_new.experiments.crystals(), result_new.experiments.identifiers()
+        )
+        if c is not None
+    ][0]
     # Now test refinement gradients are correct
     old_exps = ExperimentList(
         [
@@ -110,8 +123,9 @@ def test_run(dials_data, tmp_path):
                 detector=imageset_old.get_detector(),
                 goniometer=gonio_old,
                 scan=imageset_old.get_scan(),
-                crystal=result_old.experiments[0].crystal,
+                crystal=crystal_old,
                 imageset=None,
+                identifier=identifier_old,
             )
         ]
     )
@@ -122,19 +136,32 @@ def test_run(dials_data, tmp_path):
                 detector=imageset_new.get_detector(),
                 goniometer=gonio_new,
                 scan=imageset_new.get_scan(),
-                crystal=result_new.experiments[0].crystal,
+                crystal=crystal_new,
                 imageset=None,
+                identifier=identifier_new,
             )
         ]
     )
+    old_indexed_reflections = (
+        result_old.indexed_reflections.select_on_experiment_identifiers(
+            old_exps.identifiers()
+        )
+    )
+    old_indexed_reflections.reset_ids()
+    new_indexed_reflections = (
+        result_new.indexed_reflections.select_on_experiment_identifiers(
+            new_exps.identifiers()
+        )
+    )
+    new_indexed_reflections.reset_ids()
 
     params = phil_scope.fetch(source=parse("")).extract()
 
     refiner_old = RefinerFactory.from_parameters_data_experiments(
-        params, result_old.indexed_reflections, old_exps
+        params, old_indexed_reflections, old_exps
     )
     refiner_new = RefinerFactory.from_parameters_data_experiments(
-        params, result_new.indexed_reflections, new_exps
+        params, new_indexed_reflections, new_exps
     )
 
     # Analytical gradients should be approximately the same in either case

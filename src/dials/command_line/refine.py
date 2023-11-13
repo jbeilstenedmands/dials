@@ -541,6 +541,37 @@ def run_dials_refine(experiments, reflections, params):
     return experiments, reflections, refiner, history
 
 
+def _filter_experiments_with_crystals(experiments, reflection_table):
+    crystalless_expts = [expt if not expt.crystal else None for expt in experiments]
+    crystal_locs = [i for i, expt in enumerate(experiments) if expt.crystal]
+    crystalless_refls = [
+        reflection_table.select_on_experiment_identifiers([expt.identifier])
+        if expt
+        else None
+        for expt in crystalless_expts
+    ]
+    if not any(crystalless_expts):
+        return (
+            experiments,
+            reflection_table,
+            crystal_locs,
+            crystalless_expts,
+            crystalless_refls,
+        )
+    experiments = ExperimentList([expt for expt in experiments if expt.crystal])
+    reflection_table = reflection_table.select_on_experiment_identifiers(
+        experiments.identifiers()
+    )
+    reflection_table.reset_ids()
+    return (
+        experiments,
+        reflection_table,
+        crystal_locs,
+        crystalless_expts,
+        crystalless_refls,
+    )
+
+
 @dials.util.show_mail_handle_errors()
 def run(args=None, phil=working_phil):
     """
@@ -607,19 +638,13 @@ def run(args=None, phil=working_phil):
         logger.info("The following parameters have been modified:\n")
         logger.info(diff_phil)
 
-    crystalless_expts = [expt if not expt.crystal else None for expt in experiments]
-    crystal_locs = [i for i, expt in enumerate(experiments) if expt.crystal]
-    crystalless_refls = [
-        reflections.select_on_experiment_identifiers([expt.identifier])
-        if expt
-        else None
-        for expt in crystalless_expts
-    ]
-    experiments = ExperimentList([expt for expt in experiments if expt.crystal])
-    reflections = reflections.select_on_experiment_identifiers(
-        experiments.identifiers()
-    )
-    reflections.reset_ids()
+    (
+        experiments,
+        reflections,
+        crystal_locs,
+        crystalless_expts,
+        crystalless_refls,
+    ) = _filter_experiments_with_crystals(experiments, reflections)
 
     try:
         experiments, reflections, refiner, history = run_dials_refine(
@@ -628,13 +653,16 @@ def run(args=None, phil=working_phil):
     except (DialsRefineConfigError, DialsRefineRuntimeError) as e:
         sys.exit(str(e))
 
-    tables = reflections.split_by_experiment_id()
-    for i, expt, table in zip(crystal_locs, experiments, tables):
-        crystalless_expts[i] = expt
-        crystalless_refls[i] = table
-    experiments = ExperimentList(crystalless_expts)
-    reflections = flex.reflection_table.concat(crystalless_refls)
-    reflections.assert_experiment_identifiers_are_consistent(experiments)
+    if any(crystalless_expts):
+        if -1 in set(reflections["id"]):
+            reflections = reflections.select(reflections["id"] >= 0)
+        tables = reflections.split_by_experiment_id()
+        for i, expt, table in zip(crystal_locs, experiments, tables):
+            crystalless_expts[i] = expt
+            crystalless_refls[i] = table
+        experiments = ExperimentList(crystalless_expts)
+        reflections = flex.reflection_table.concat(crystalless_refls)
+        reflections.assert_experiment_identifiers_are_consistent(experiments)
 
     # For the usual case of refinement of one crystal, print that model for information
     crystals = experiments.crystals()

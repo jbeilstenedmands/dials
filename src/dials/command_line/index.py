@@ -81,6 +81,12 @@ output {
     .type = path
   reflections = indexed.refl
     .type = path
+  extend_input_experiments = False
+    .type = bool
+    .help = "If True, the input experiment models are extended with new crystal"
+            "models, thus the output contains a crystal-less experiment for each"
+            "imageset that matches the unindexed reflections. Setting this option"
+            "to False recovers the old behaviour of versions DIALS 3.17 and earlier."
   log = dials.index.log
     .type = str
 }
@@ -148,6 +154,10 @@ def _index_experiments(
         params=params,
     )
     idxr.index()
+    if not params.output.extend_input_experiments:
+        idx_refl = copy.deepcopy(idxr.refined_reflections)
+        idx_refl.extend(idxr.unindexed_reflections)
+        return idxr.refined_experiments, idx_refl
 
     n_unindex = len(unindexed_input)
     # renumber unindexed reflections ids (only more than one here if joint indexing)

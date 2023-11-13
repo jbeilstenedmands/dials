@@ -200,6 +200,11 @@ def run(args=None):
     if len(experiments) == 0:
         parser.print_help()
         return
+    from dials.command_line.refine import _filter_experiments_with_crystals
+
+    experiments, reflections, _, _, _ = _filter_experiments_with_crystals(
+        experiments, reflections
+    )
     if len(experiments.crystals()) > 1:
         if params.crystal_id is not None:
             experiments, reflections = select_datasets_on_crystal_id(
