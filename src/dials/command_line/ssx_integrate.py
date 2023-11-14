@@ -294,12 +294,16 @@ def process_batch(sub_tables, sub_expts, configuration, batch_offset=0):
     input_iterable: List[InputToIntegrate] = []
     from dxtbx.imageset import ImageSet
 
+    original_isets = list(sub_expts.imagesets())
+    identifiers_to_scans = {expt.identifier: expt.scan for expt in sub_expts}
     for i, (table, expt) in enumerate(zip(sub_tables, sub_expts)):
         iset = expt.imageset
         if expt.scan:
             idx = expt.scan.get_image_range()[0]
             subset = iset[idx : idx + 1]
-            expt.imageset = ImageSet(subset.data(), subset.indices())
+            expt.imageset = ImageSet(
+                subset.data(), subset.indices()
+            )  # Needed for stills integration code
             expt.scan = None  # Needed for some aspect of integration code, unclear what exactly.
         input_iterable.append(
             InputToIntegrate(
@@ -328,7 +332,15 @@ def process_batch(sub_tables, sub_expts, configuration, batch_offset=0):
     # then join
     integrated_reflections = flex.reflection_table()
     integrated_experiments = []
-
+    use_beam = None
+    use_gonio = None
+    use_detector = None
+    if len(sub_expts.beams()) == 1:
+        use_beam = sub_expts.beams()[0]
+    if len(sub_expts.goniometers()) == 1:
+        use_gonio = sub_expts.goniometers()[0]
+    if len(sub_expts.detectors()) == 1:
+        use_detector = sub_expts.detectors()[0]
     n_integrated = 0
     for result in results:
         if result.table:
@@ -339,6 +351,14 @@ def process_batch(sub_tables, sub_expts, configuration, batch_offset=0):
                 ids_map.values()
             )[0]
             n_integrated += 1
+            result.experiment.imageset = original_isets[0]
+            result.experiment.scan = identifiers_to_scans[result.experiment.identifier]
+            if use_beam:
+                result.experiment.beam = use_beam
+            if use_gonio:
+                result.experiment.goniometer = use_gonio
+            if use_detector:
+                result.experiment.detector = use_detector
             integrated_reflections.extend(result.table)
             integrated_experiments.append(result.experiment)
             configuration["aggregator"].add_dataset(result.collector, result.crystalno)
