@@ -572,6 +572,26 @@ def _filter_experiments_with_crystals(experiments, reflection_table):
     )
 
 
+def recombine_with_crystalless_expts(
+    experiments,
+    reflections,
+    crystal_locs,
+    crystalless_expts,
+    crystalless_refls,
+):
+    if any(crystalless_expts):
+        if -1 in set(reflections["id"]):
+            reflections = reflections.select(reflections["id"] >= 0)
+        tables = reflections.split_by_experiment_id()
+        for i, expt, table in zip(crystal_locs, experiments, tables):
+            crystalless_expts[i] = expt
+            crystalless_refls[i] = table
+        experiments = ExperimentList(crystalless_expts)
+        reflections = flex.reflection_table.concat(crystalless_refls)
+        reflections.assert_experiment_identifiers_are_consistent(experiments)
+    return experiments, reflections
+
+
 @dials.util.show_mail_handle_errors()
 def run(args=None, phil=working_phil):
     """
@@ -653,16 +673,13 @@ def run(args=None, phil=working_phil):
     except (DialsRefineConfigError, DialsRefineRuntimeError) as e:
         sys.exit(str(e))
 
-    if any(crystalless_expts):
-        if -1 in set(reflections["id"]):
-            reflections = reflections.select(reflections["id"] >= 0)
-        tables = reflections.split_by_experiment_id()
-        for i, expt, table in zip(crystal_locs, experiments, tables):
-            crystalless_expts[i] = expt
-            crystalless_refls[i] = table
-        experiments = ExperimentList(crystalless_expts)
-        reflections = flex.reflection_table.concat(crystalless_refls)
-        reflections.assert_experiment_identifiers_are_consistent(experiments)
+    experiments, reflections = recombine_with_crystalless_expts(
+        experiments,
+        reflections,
+        crystal_locs,
+        crystalless_expts,
+        crystalless_refls,
+    )
 
     # For the usual case of refinement of one crystal, print that model for information
     crystals = experiments.crystals()

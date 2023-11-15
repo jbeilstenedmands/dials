@@ -202,14 +202,20 @@ def run(args=None):
         return
     from dials.command_line.refine import _filter_experiments_with_crystals
 
-    experiments, reflections, _, _, _ = _filter_experiments_with_crystals(
-        experiments, reflections
-    )
+    (
+        experiments,
+        reflections,
+        crystal_locs,
+        crystalless_expts,
+        crystalless_refls,
+    ) = _filter_experiments_with_crystals(experiments, reflections)
+    output_all_input_expts = True
     if len(experiments.crystals()) > 1:
         if params.crystal_id is not None:
             experiments, reflections = select_datasets_on_crystal_id(
                 experiments, reflections, params.crystal_id
             )
+            output_all_input_expts = False
         else:
             sys.exit(
                 "Only one crystal can be processed at a time: set crystal_id to choose "
@@ -239,10 +245,14 @@ def run(args=None):
 
     for subgroup in refined_settings:
         expts = subgroup.refined_experiments
+        if output_all_input_expts:
+            assert len(crystal_locs) == 1
+            crystalless_expts[crystal_locs[0]] = expts[0]
+        out_expts = ExperimentList(crystalless_expts)
         soln = int(subgroup.setting_number)
         bs_json = "%sbravais_setting_%i.expt" % (prefix, soln)
         logger.info("Saving solution %i as %s", soln, bs_json)
-        expts.as_file(os.path.join(params.output.directory, bs_json))
+        out_expts.as_file(os.path.join(params.output.directory, bs_json))
 
 
 if __name__ == "__main__":
