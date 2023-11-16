@@ -181,19 +181,26 @@ def index_one(
 
 def wrap_index_one(input_to_index: InputToIndex) -> IndexingResult:
     # First unpack the input and run the function
-    expts, table, unindexed_refl, unindexed_expt = index_one(
-        input_to_index.experiment,
-        input_to_index.reflection_table,
-        input_to_index.parameters,
-        input_to_index.method_list,
-        input_to_index.image_no,
-        input_to_index.known_crystal_models,
-    )
+    if input_to_index.reflection_table is not None:
+        expts, table, unindexed_refl, unindexed_expt = index_one(
+            input_to_index.experiment,
+            input_to_index.reflection_table,
+            input_to_index.parameters,
+            input_to_index.method_list,
+            input_to_index.image_no,
+            input_to_index.known_crystal_models,
+        )
 
-    # Now calculate some useful quantities for the result
-    n_strong = input_to_index.reflection_table.get_flags(
-        input_to_index.reflection_table.flags.strong
-    ).count(True)
+        # Now calculate some useful quantities for the result
+        n_strong = input_to_index.reflection_table.get_flags(
+            input_to_index.reflection_table.flags.strong
+        ).count(True)
+    else:
+        n_strong = 0
+        expts = (None,)
+        table = None
+        unindexed_refl = None
+        unindexed_expt = input_to_index.experiment
     if expts and table:
         unindexed_refl.assert_experiment_identifiers_are_consistent(unindexed_expt)
         table.assert_experiment_identifiers_are_consistent(expts)
@@ -225,10 +232,11 @@ def wrap_index_one(input_to_index: InputToIndex) -> IndexingResult:
             result.rmsd_dpsi.append(rmsd_z)
             result.identifiers.append(identifier)
     else:
-        unindexed_refl.experiment_identifiers()[0] = unindexed_expt[
-            0
-        ].identifier  # bug in stills indexer?
-        unindexed_refl.assert_experiment_identifiers_are_consistent(unindexed_expt)
+        if unindexed_refl:
+            unindexed_refl.experiment_identifiers()[0] = unindexed_expt[
+                0
+            ].identifier  # bug in stills indexer?
+            unindexed_refl.assert_experiment_identifiers_are_consistent(unindexed_expt)
         result = IndexingResult(
             input_to_index.image_identifier,
             input_to_index.image_no,
