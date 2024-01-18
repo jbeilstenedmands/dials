@@ -37,7 +37,13 @@ from dials.algorithms.symmetry.absences.run_absences_checks import (
 from dials.array_family import flex
 from dials.util.export_mtz import MADMergedMTZWriter, MergedMTZWriter
 from dials.util.filter_reflections import filter_reflection_table
-from dials.util.resolution_analysis import resolution_cc_half
+from dials.util.resolution_analysis import (
+    log_fit,
+    metrics,
+    resolution_cc_half,
+    resolution_cc_half_significance,
+    resolution_fit_from_merging_stats,
+)
 
 from .french_wilson import french_wilson
 
@@ -248,6 +254,18 @@ def make_merged_mtz_file(mtz_datasets, r_free_array: miller.array = None):
     return mtz_writer.mtz_file
 
 
+from dataclasses import dataclass
+
+
+@dataclass
+class ResolutionFitOptions:
+    cc_half: Optional[float] = 0.3
+    cc_half_significance_level: Optional[float] = 0.01
+    isigma: Optional[float] = None
+    misigma: Optional[float] = None
+    i_mean_over_sigma_mean: Optional[float] = None
+
+
 def merge_scaled_array(
     experiments,
     scaled_array,
@@ -257,6 +275,7 @@ def merge_scaled_array(
     n_bins=20,
     show_additional_stats=False,
     applied_d_min=None,
+    resolution_fit_options: Optional[ResolutionFitOptions] = None,
 ):
     # assumes filtering already done and converted to combined scaled array
 
@@ -287,6 +306,9 @@ def merge_scaled_array(
             n_bins,
             use_internal_variance,
             additional_stats=show_additional_stats,
+            cc_one_half_significance_level=resolution_fit_options.cc_half_significance_level
+            if resolution_fit_options
+            else 0.01,
         )
     except DialsMergingStatisticsError as e:
         logger.error(e, exc_info=True)
@@ -294,9 +316,48 @@ def merge_scaled_array(
         stats_data.merging_statistics_result = stats
         stats_data.anom_merging_statistics_result = anom_stats
         # try to fit resolution
+        resolution_cut_criterion = ""
+        d_min = None
         try:
             if applied_d_min is None:
-                d_min = resolution_cc_half(stats, limit=0.3).d_min
+                if not resolution_fit_options:
+                    d_min = resolution_cc_half(stats, limit=0.3).d_min
+                elif resolution_fit_options.cc_half:
+                    d_min = resolution_cc_half(
+                        stats, limit=resolution_fit_options.cc_half
+                    ).d_min
+                    resolution_cut_criterion = (
+                        f"cc_half={resolution_fit_options.cc_half}"
+                    )
+                elif resolution_fit_options.cc_half_significance_level:
+                    d_min = resolution_cc_half_significance(stats).d_min
+                    resolution_cut_criterion = f"cc_half_significance_level={resolution_fit_options.cc_half_significance_level}"
+                elif resolution_fit_options.isigma:
+                    d_min = resolution_fit_from_merging_stats(
+                        stats,
+                        metric=metrics.ISIGMA.value,
+                        model=log_fit,
+                        limit=resolution_fit_options.isigma,
+                    ).d_min
+                    resolution_cut_criterion = f"isigma={resolution_fit_options.isigma}"
+                elif resolution_fit_options.misigma:
+                    d_min = resolution_fit_from_merging_stats(
+                        stats,
+                        metric=metrics.MISIGMA.value,
+                        model=log_fit,
+                        limit=resolution_fit_options.misigma,
+                    ).d_min
+                    resolution_cut_criterion = (
+                        f"misigma={resolution_fit_options.misigma}"
+                    )
+                elif resolution_fit_options.i_mean_over_sigma_mean:
+                    d_min = resolution_fit_from_merging_stats(
+                        stats,
+                        metric=metrics.I_MEAN_OVER_SIGMA_MEAN.value,
+                        model=log_fit,
+                        limit=resolution_fit_options.i_mean_over_sigma_mean,
+                    ).d_min
+                    resolution_cut_criterion = f"i_mean_over_sigma_mean={resolution_fit_options.i_mean_over_sigma_mean}"
             else:
                 d_min = applied_d_min
         except RuntimeError as e:
@@ -318,6 +379,7 @@ def merge_scaled_array(
                         cut_anom_stats = None
                     stats_data.cut_merging_statistics_result = cut_stats
                     stats_data.cut_anom_merging_statistics_result = cut_anom_stats
+                    stats_data.resolution_cut_criterion = resolution_cut_criterion
 
     return merged, merged_anom, stats_data
 
@@ -335,6 +397,7 @@ def merge(
     assess_space_group=False,
     n_bins=20,
     show_additional_stats=False,
+    resolution_fit_options: Optional[ResolutionFitOptions] = None,
 ):
     """
     Merge reflection table data and generate a summary of the merging statistics.
@@ -371,6 +434,7 @@ def merge(
         n_bins,
         show_additional_stats=show_additional_stats,
         applied_d_min=d_min,
+        resolution_fit_options=resolution_fit_options,
     )
 
 
@@ -481,6 +545,13 @@ def merge_scaled_array_to_mtz_with_report_collection(
         wavelength = np.mean(
             np.array([expt.beam.get_wavelength() for expt in experiments], dtype=float)
         )
+    resolution_fit_options = ResolutionFitOptions(
+        params.merging.cc_half,
+        params.merging.cc_half_significance_level,
+        params.merging.isigma,
+        params.merging.misigma,
+        params.merging.i_mean_over_sigma_mean,
+    )
     with collect_html_data_from_merge() as collector:
         mtz_dataset = MTZDataClass(
             wavelength=wavelength,
@@ -498,6 +569,7 @@ def merge_scaled_array_to_mtz_with_report_collection(
             use_internal_variance=params.merging.use_internal_variance,
             show_additional_stats=params.output.additional_stats,
             applied_d_min=applied_d_min,
+            resolution_fit_options=resolution_fit_options,
         )
         process_merged_data(
             params, mtz_dataset, merged, merged_anomalous, stats_summary

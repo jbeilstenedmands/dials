@@ -15,6 +15,7 @@ from iotbx import mtz, phil
 
 from dials.algorithms.merging.merge import (
     MTZDataClass,
+    ResolutionFitOptions,
     collect_html_data_from_merge,
     generate_r_free_flags,
     make_merged_mtz_file,
@@ -107,7 +108,32 @@ merging {
     anomalous = False
         .type = bool
         .help = "Option to control whether reported merging stats are anomalous."
+    cc_half = 0.3
+        .type = float(value_min=0)
+        .help = "Minimum value of CC½ in the outer resolution shell"
+        .short_caption = "Outer shell CC½"
+        .expert_level = 1
+    cc_half_significance_level = 0.01
+        .type = float(value_min=0, value_max=1)
+        .expert_level = 1
+        .short_caption = "CC½ significance level"
+    isigma = None
+        .type = float(value_min=0)
+        .help = "Minimum value of the unmerged <I/sigI> in the outer resolution shell"
+        .short_caption = "Outer shell unmerged <I/sigI>"
+        .expert_level = 1
+    misigma = None
+        .type = float(value_min=0)
+        .help = "Minimum value of the merged <I/sigI> in the outer resolution shell"
+        .short_caption = "Outer shell merged <I/sigI>"
+        .expert_level = 1
+    i_mean_over_sigma_mean = None
+        .type = float(value_min=0)
+        .help = "Minimum value of the unmerged <I>/<sigI> in the outer resolution shell"
+        .short_caption = "Outer shell unmerged <I>/<sigI>"
+        .expert_level = 2
 }
+
 include scope dials.algorithms.merging.merge.r_free_flags_phil_scope
 output {
     log = dials.merge.log
@@ -260,7 +286,13 @@ def merge_data_to_mtz(
             reflections_subsets = [flex.reflection_table.concat(reflections)]
         else:
             reflections_subsets = reflections
-
+    resolution_fit_options = ResolutionFitOptions(
+        params.merging.cc_half,
+        params.merging.cc_half_significance_level,
+        params.merging.isigma,
+        params.merging.misigma,
+        params.merging.i_mean_over_sigma_mean,
+    )
     # merge and truncate the data for each wavelength group
     for experimentlist, reflection_table, mtz_dataset in zip(
         experiments_subsets, reflections_subsets, mtz_datasets
@@ -279,6 +311,7 @@ def merge_data_to_mtz(
             n_bins=params.merging.n_bins,
             use_internal_variance=params.merging.use_internal_variance,
             show_additional_stats=params.output.additional_stats,
+            resolution_fit_options=resolution_fit_options,
         )
         process_merged_data(
             params, mtz_dataset, merged, merged_anomalous, stats_summary

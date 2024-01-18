@@ -61,6 +61,7 @@ class MergingStatisticsData:
     cut_anom_merging_statistics_result: Optional[Type[dataset_statistics]] = None
     anomalous_amplitudes: Optional[miller.array] = None
     Wilson_B_iso: Optional[float] = None
+    resolution_cut_criterion: Optional[str] = None
 
     def __str__(self):
         if not self.merging_statistics_result:
@@ -70,11 +71,8 @@ class MergingStatisticsData:
             d_min = self.cut_merging_statistics_result.bins[-1].d_min
             stats_summary += (
                 "\n"
-                "Resolution limit suggested from CC"
-                + "\u00BD"
-                + " fit (limit CC"
-                + "\u00BD"
-                + f"=0.3): {d_min:.2f}\n"
+                "Resolution limit suggested from merging statistics fit "
+                + f"(limit {self.resolution_cut_criterion}): {d_min:.2f}\n"
             )
         stats_summary += table_1_summary(
             self.merging_statistics_result,
@@ -94,6 +92,15 @@ class MergingStatisticsData:
                 self.cut_anom_merging_statistics_result,
                 Wilson_B_iso=self.Wilson_B_iso,
             )
+        )
+
+    def table_1_stats_dict(self):
+        return table_1_stats(
+            self.merging_statistics_result,
+            self.anom_merging_statistics_result,
+            self.cut_merging_statistics_result,
+            self.cut_anom_merging_statistics_result,
+            Wilson_B_iso=self.Wilson_B_iso,
         )
 
     def __repr__(self):
@@ -155,6 +162,7 @@ def generate_json_data(data: dict[float, MergingStatisticsData]) -> dict:
                 "merging_stats"
             ] = stats.merging_statistics_result.as_dict()
             json_data[wl_key]["table_1_stats"] = stats.table_1_stats()
+            json_data[wl_key]["table_1_stats_dict"] = stats.table_1_stats_dict()
             if stats.anom_merging_statistics_result:
                 json_data[wl_key][
                     "merging_stats_anom"
