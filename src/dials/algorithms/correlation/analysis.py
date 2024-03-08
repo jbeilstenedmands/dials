@@ -248,7 +248,8 @@ class CorrelationMatrix(Subject):
         with open(self.params.output.cos_corr_json, "w") as f:
             f.write(json_str)
 
-    def CompleteCovarianceMatrix(self, Corr, S):
+    @staticmethod
+    def CompleteCovarianceMatrix(Corr, S):
         # Corr is the initial (possibly invalid) covariance matrix
         # S is a matrix with 1 or 0 for specified covariances
 
