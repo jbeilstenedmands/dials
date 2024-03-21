@@ -143,10 +143,14 @@ def _mmtbx_intensity_from_structure(
     params.high_resolution = d_min
     params.fmodel.k_sol = k_sol
     params.fmodel.b_sol = b_sol
+    params.output.type = "real"
     if wavelength:
         params.wavelength = wavelength
-    fm = fmodel_from_xray_structure(xray_structure, params=params)
-    ic = fm.f_model.as_intensity_array()
+    fm = fmodel_from_xray_structure(xray_structure, add_sigmas=True, params=params)
+    f_model = fm.f_model
+    f_model = f_model.customized_copy(anomalous_flag=True)
+    f_model = f_model.generate_bijvoet_mates()
+    ic = f_model.as_intensity_array()
     return ic
 
 
@@ -158,6 +162,11 @@ def intensity_array_from_cif_data_file(cif_file):
     for ma in f.as_miller_arrays():
         for l in ma.info().labels:
             if "F_meas" in l:
+                return ma.as_intensity_array()
+    for ma in f.as_miller_arrays():
+        for l in ma.info().labels:
+            print(l)
+            if "intensity_meas" in l:
                 return ma.as_intensity_array()
     raise KeyError("Unable to find F_meas in cif file")
 

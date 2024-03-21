@@ -239,6 +239,16 @@ Targeted outlier rejection requires a target Ih_table with nblocks = 1"""
         self._target_Ih_table_block = target.blocked_data_list[0]
         self._target_Ih_table_block.calc_Ih()
         super().__init__(Ih_table, zmax)
+        weights = flumpy.to_numpy(
+            limit_outlier_weights(
+                copy.deepcopy(self._Ih_table_block.weights),
+                self._Ih_table_block.h_index_matrix,
+            )
+        )
+        for w, v in zip(weights, self._Ih_table_block.weights):
+            if abs(w - v) / abs(w) > 0.0001:
+                print(w, v)
+        self._Ih_table_block.weights = weights
 
     def _do_outlier_rejection(self):
         """Add indices (w.r.t. the Ih_table data) to self._outlier_indices."""
@@ -266,8 +276,8 @@ Targeted outlier rejection requires a target Ih_table with nblocks = 1"""
             Ih_table.intensities - (Ih_table.inverse_scale_factors * target_Ih_value)
         ) / (
             np.sqrt(
-                Ih_table.variances
-                + (np.square(Ih_table.inverse_scale_factors) * target_Ih_sigmasq)
+                (1.0 / Ih_table.weights)
+                # + (np.square(Ih_table.inverse_scale_factors) * target_Ih_sigmasq)
             )
         )
         outliers_sel = np.abs(norm_dev) > self._zmax

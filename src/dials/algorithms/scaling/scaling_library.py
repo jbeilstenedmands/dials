@@ -561,7 +561,14 @@ def create_datastructures_for_reference_file(
         reference_file, d_min, wavelength, k_sol, b_sol
     )
     if not anomalous:
-        intensities = intensities.as_non_anomalous_array().merge_equivalents().array()
+        intensities = (
+            intensities.as_non_anomalous_array()
+            .merge_equivalents()
+            .array()
+            .map_to_asu()
+        )
+    else:
+        intensities = intensities.merge_equivalents().array().map_to_asu()
 
     table = flex.reflection_table()
     table["intensity"] = intensities.data()
