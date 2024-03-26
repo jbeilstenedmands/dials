@@ -190,13 +190,13 @@ def change_of_basis_ops_to_minimum_cell(
             logger.info(
                 f"Some input cells are not sufficiently similar to the median cell:\n  {median_params}\n"
                 + f"  within a relative_length_tolerance of {relative_length_tolerance}\n"
-                + f"  and an absolute_angle_tolerance of {absolute_angle_tolerance}.\n"
+                + f"  and an absolute_aßngle_tolerance of {absolute_angle_tolerance}.\n"
                 + "Attempting to map to a common minimum cell through the most common lattice group."
             )
         groups = [
             metric_subgroups(
                 expt.crystal.get_crystal_symmetry(),
-                0.1,#max_delta,
+                max_delta,#0.1
                 best_monoclinic_beta=False,
                 enforce_max_delta_for_generated_two_folds=True,
             )
@@ -206,20 +206,40 @@ def change_of_basis_ops_to_minimum_cell(
             g.result_groups[0]["best_subsym"].space_group() for g in groups
         )
         target_group = counter.most_common()[0][0]
+        print(target_group.info())
         cb_ops = []
         best_cells = []
         from cctbx import crystal
+        from scitbx import matrix
+        import numpy as np
+        def calc_distortion(u1, u2):
+            B1 = matrix.sqr(u1.orthogonalization_matrix())
+            G1 = B1.transpose() * B1
+            B2 = matrix.sqr(u2.orthogonalization_matrix())
+            G2 = B2.transpose() * B2
+            D = G1 * G2.inverse()
+            d = 0.5 * (abs(D[0] - 1) + abs(D[4] - 1) + abs(D[8] - 1)
+                       + abs(D[1]) + abs(D[2]) + abs(D[3])
+                       + abs(D[5]) + abs(D[6]) + abs(D[7])
+                       
+                       
+                       )
+            return d
+
         for expt in experiments:
+            print(expt.crystal.get_unit_cell(), expt.crystal.get_space_group().info())
             groups = metric_subgroups(
                 expt.crystal.get_crystal_symmetry(),
-                0.1,#max_delta,ß
+                max_delta,#0.1
                 best_monoclinic_beta=False,
                 enforce_max_delta_for_generated_two_folds=True,
             )
             group = None
-            for g in groups.result_groups:
+            best_subsyms = {}
+
+            for i, g in enumerate(groups.result_groups):
                 if (g["best_subsym"].space_group() == target_group):
-                    '''        and g["best_subsym"].unit_cell().is_similar_to(
+                    '''and g["best_subsym"].unit_cell().is_similar_to(
                         median_cell,
                         relative_length_tolerance=relative_length_tolerance,
                         absolute_angle_tolerance=absolute_angle_tolerance,
@@ -229,7 +249,21 @@ def change_of_basis_ops_to_minimum_cell(
                     #print(s.change_of_basis_op_to_reference_setting())
                     #print(change_of_basis_op_to_reference_setting)
                     
-                    group = g
+                    #group = g
+                    best_subsyms[i] = g['best_subsym']
+            if best_subsyms:
+                if len(best_subsyms) == 1:
+                    group = groups.result_groups[list(best_subsyms.keys())[0]]
+                else:
+                    # find most closely matching cell to median
+                    deltas = []
+                    for i, s in enumerate(best_subsyms.values()):
+                        # find best match to median cell.
+                        d = calc_distortion(median_cell, s.unit_cell())
+                        deltas.append(d)
+                    print(deltas)
+                    minidx = np.argmin(np.array(deltas))
+                    group = groups.result_groups[list(best_subsyms.keys())[minidx]]
             if group:
                 #print(group["cb_op_inp_best"])
                 cb_ops.append(group["cb_op_inp_best"])

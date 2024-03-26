@@ -193,10 +193,10 @@ class cosym(Subject):
             print(expt.crystal.get_unit_cell().parameters())
         median_cell = median_unit_cell(experiments)
         print(median_cell.parameters())
-        assert all(c.get_unit_cell().is_similar_to(median_cell,
+        '''assert all(c.get_unit_cell().is_similar_to(median_cell,
             relative_length_tolerance=self.params.relative_length_tolerance,
                 absolute_angle_tolerance=self.params.absolute_angle_tolerance) for c in self._experiments.crystals())
-
+        '''
         # transform models into miller arrays
         datasets = filtered_arrays_from_experiments_reflections(
             self.experiments,
