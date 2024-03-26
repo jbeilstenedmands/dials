@@ -160,6 +160,7 @@ def change_of_basis_ops_to_minimum_cell(
     """
     logger.info("Mapping all input cells to a common minimum cell")
     median_cell = median_unit_cell(experiments)
+    print(median_cell.parameters())
     unit_cells_are_similar = unit_cells_are_similar_to(
         experiments, median_cell, relative_length_tolerance, absolute_angle_tolerance
     )
@@ -195,7 +196,7 @@ def change_of_basis_ops_to_minimum_cell(
         groups = [
             metric_subgroups(
                 expt.crystal.get_crystal_symmetry(),
-                max_delta,
+                0.1,#max_delta,
                 best_monoclinic_beta=False,
                 enforce_max_delta_for_generated_two_folds=True,
             )
@@ -207,18 +208,30 @@ def change_of_basis_ops_to_minimum_cell(
         target_group = counter.most_common()[0][0]
         cb_ops = []
         best_cells = []
+        from cctbx import crystal
         for expt in experiments:
             groups = metric_subgroups(
                 expt.crystal.get_crystal_symmetry(),
-                max_delta,
+                0.1,#max_delta,ß
                 best_monoclinic_beta=False,
                 enforce_max_delta_for_generated_two_folds=True,
             )
             group = None
             for g in groups.result_groups:
-                if g["best_subsym"].space_group() == target_group:
+                if (g["best_subsym"].space_group() == target_group):
+                    '''        and g["best_subsym"].unit_cell().is_similar_to(
+                        median_cell,
+                        relative_length_tolerance=relative_length_tolerance,
+                        absolute_angle_tolerance=absolute_angle_tolerance,
+                    ):'''
+                    print(f"best subsym {g['best_subsym'].unit_cell().parameters()}")
+                    s = crystal.symmetry(unit_cell=g['best_subsym'].unit_cell(), space_group=sgtbx.space_group())
+                    #print(s.change_of_basis_op_to_reference_setting())
+                    #print(change_of_basis_op_to_reference_setting)
+                    
                     group = g
             if group:
+                #print(group["cb_op_inp_best"])
                 cb_ops.append(group["cb_op_inp_best"])
                 best_cells.append(group["best_subsym"].unit_cell())
             else:
@@ -230,7 +243,7 @@ def change_of_basis_ops_to_minimum_cell(
                 )
         # now get median best cell
         from cctbx import uctbx
-
+        #assert 0
         uc_params = [flex.double() for i in range(6)]
         for unit_cell in best_cells:
             for i, p in enumerate(unit_cell.parameters()):
@@ -238,8 +251,13 @@ def change_of_basis_ops_to_minimum_cell(
         overall_best_unit_cell = uctbx.unit_cell(
             parameters=[flex.median(p) for p in uc_params]
         )
+        print(overall_best_unit_cell)
+        print("best cells")
+        print([c.parameters() for c in best_cells])
+        #assert 0
         n = 0
         for i, cb_op in enumerate(cb_ops):
+            print(cb_op)
             if cb_op is not None:
                 best_cell = best_cells[n]
                 n += 1
@@ -260,14 +278,20 @@ def change_of_basis_ops_to_minimum_cell(
                         + f"  and an absolute_angle_tolerance of {absolute_angle_tolerance}"
                     )
                     cb_ops[i] = None
+        #assert 0
         if not any(cb_ops):
             raise ValueError(
                 "Exiting symmetry analysis: Unable to map any cells to a minimum cell through a consistent best cell"
             )
-
+        #assert 0
         ref_expts = ExperimentList(
             [expt for expt, cb_op in zip(experiments, cb_ops) if cb_op]
         ).change_basis(list(filter(None, cb_ops)))
+        for expt, cb_op in zip(experiments, cb_ops):
+            if cb_op:
+                new = expt.crystal.change_basis(cb_op)
+                print(new.get_unit_cell().parameters())
+        #assert 0
         cb_op_ref_min = (
             ref_expts[0]
             .crystal.get_crystal_symmetry()

@@ -177,10 +177,25 @@ class cosym(Subject):
         # of the lattice, otherwise they would lead to non-integer miller indices
         # when reindexing to a primitive setting
         self._reflections = eliminate_sys_absent(self._experiments, self._reflections)
-
+        print("input cells")
+        for expt in self._experiments:
+            print(expt.crystal.get_unit_cell().parameters())
         self._experiments, self._reflections = apply_change_of_basis_ops(
             self._experiments, self._reflections, cb_ops
         )
+        print("trnsformed cells")
+        for expt in self._experiments:
+            print(expt.crystal.get_unit_cell().parameters())
+            s = crystal.symmetry(unit_cell=expt.crystal.get_unit_cell(), space_group=sgtbx.space_group())
+            print(s.change_of_basis_op_to_primitive_setting())
+            expt.crystal = expt.crystal.change_basis(s.change_of_basis_op_to_primitive_setting())
+        for expt in self._experiments:
+            print(expt.crystal.get_unit_cell().parameters())
+        median_cell = median_unit_cell(experiments)
+        print(median_cell.parameters())
+        assert all(c.get_unit_cell().is_similar_to(median_cell,
+            relative_length_tolerance=self.params.relative_length_tolerance,
+                absolute_angle_tolerance=self.params.absolute_angle_tolerance) for c in self._experiments.crystals())
 
         # transform models into miller arrays
         datasets = filtered_arrays_from_experiments_reflections(
