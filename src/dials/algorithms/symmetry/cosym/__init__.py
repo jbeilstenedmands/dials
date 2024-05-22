@@ -224,6 +224,22 @@ class CosymAnalysis(symmetry_base, Subject):
                 logger.info("Setting nproc={}".format(params.nproc))
             else:
                 params.nproc = 1
+        # ensure still unique after mapping
+        from scitbx.array_family import flex
+
+        new_intensities = None
+        new_dataset_ids = flex.int([])
+        for d in set(self.dataset_ids):
+            sel = self.dataset_ids == d
+            these_i = self.intensities.select(sel)
+            these_merged = these_i.merge_equivalents().array()
+            if not new_intensities:
+                new_intensities = these_merged
+            else:
+                new_intensities = new_intensities.concatenate(these_merged)
+            new_dataset_ids.extend(flex.int(these_merged.size(), d))
+        self.intensities = new_intensities
+        self.dataset_ids = new_dataset_ids
 
     def _intialise_target(self):
         if self.params.dimensions is Auto:

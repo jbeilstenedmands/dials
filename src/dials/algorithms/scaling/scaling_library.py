@@ -511,6 +511,7 @@ class ExtendedDatasetStatistics(iotbx.merging_statistics.dataset_statistics):
             v_o = flex.pow2(o.sigmas())
             v_c = flex.pow2(c.sigmas())
             joint_w = 1.0 / (v_o + v_c)
+            # joint_w = flex.double(v_o.size(), 1.0)
             sumjw = flex.sum(joint_w)
             norm_jw = joint_w / sumjw
             xbar = flex.sum(o.data() * norm_jw)

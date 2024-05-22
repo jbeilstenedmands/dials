@@ -32,7 +32,15 @@ def _lattice_lower_upper_index(lattices, lattice_id):
 
 
 def _compute_rij_matrix_one_row_block(
-    i, lattices, data, indices, sym_ops, patterson_group, weights=True, min_pairs=3
+    i,
+    lattices,
+    data,
+    indices,
+    sym_ops,
+    patterson_group,
+    weights=True,
+    min_pairs=3,
+    epsilons=None,
 ):
     cs = data.crystal_symmetry()
     n_lattices = len(lattices)
@@ -77,17 +85,35 @@ def _compute_rij_matrix_one_row_block(
                     cc, n = rij_cache[key]
                 else:
                     indices_j = indices[cb_op_kk.as_xyz()][j_lower:j_upper]
+                    """if ik ==0 and jk == 1:
+                        print(list(indices_i))
+                        print(list(indices_j))
+                        print(indices_i[20])
+                        print(indices_i[28])
+                        print(indices_i[46])
+                        print(indices_i[66])
+                        print(indices_j[7])
+                        print(indices_j[42])
+                        print(indices_j[42])
+                        print(indices_j[44])"""
 
                     matches = miller.match_indices(indices_i, indices_j)
                     pairs = matches.pairs()
                     isel_i = pairs.column(0)
                     isel_j = pairs.column(1)
+                    """if ik ==0 and jk == 1:
+                        print(list(isel_i))
+                        print(list(isel_j))"""
+                    # FIXME EPSILONS!
                     isel_i = isel_i.select(
                         patterson_group.epsilon(indices_i.select(isel_i)) == 1
                     )
                     isel_j = isel_j.select(
                         patterson_group.epsilon(indices_j.select(isel_j)) == 1
                     )
+                    """if ik ==0 and jk == 1:
+                        print(list(isel_i))
+                        print(list(isel_j))"""
                     ms = miller.set(
                         crystal_symmetry=cs, indices=indices_j.select(isel_j)
                     )
@@ -107,6 +133,8 @@ def _compute_rij_matrix_one_row_block(
                     corr, neff = ExtendedDatasetStatistics.weighted_cchalf(
                         ma_i, ma_j, assume_index_matching=True
                     )[0]
+                    """if ik ==0 and jk == 1:
+                        print(neff)"""
                     if neff:
                         cc = corr
                         n = neff
@@ -298,6 +326,7 @@ class Target:
                     self._patterson_group,
                     weights=True,
                     min_pairs=self._min_pairs,
+                    epsilons=epsilons,
                 )
                 for i, _ in enumerate(self._lattices)
             ]
@@ -322,6 +351,15 @@ class Target:
                 se = np.sqrt((1 - np.square(rij_matrix[sel])) / (wij_matrix[sel] - 2))
                 wij_matrix = np.zeros_like(rij_matrix)
                 wij_matrix[sel] = 1 / se
+
+        """import json
+        with open("rij_weighed", "w") as f:
+            json.dump(rij_matrix.tolist(),f)
+        with open("wij_weighed", "w") as f:
+            json.dump(wij_matrix.tolist(),f)"""
+        wij_matrix.astype(int)
+        np.savetxt("rij_weighted.csv", rij_matrix, delimiter=",", fmt="% 3.5f")
+        np.savetxt("wij_weighted.csv", wij_matrix, delimiter=",", fmt="% 4d")
 
         return rij_matrix, wij_matrix
 
@@ -383,10 +421,15 @@ class Target:
         for i, (mil_ind, eps) in enumerate(zip(indices.values(), epsilons.values())):
             for j, selection in enumerate(slices):
                 # map (i, j) to a column in all_intensities
+
                 column = np.ravel_multi_index((i, j), (n_sym_ops, n_lattices))
                 epsilon_equals_one = eps[selection] == 1
                 valid_mil_ind = mil_ind[selection][epsilon_equals_one]
                 valid_intensities = intensities[selection][epsilon_equals_one]
+                """if column == 0 or column == 1:
+                    print(valid_intensities)
+                    print(valid_mil_ind)
+                    print(len(valid_mil_ind))"""
                 all_intensities[column, valid_mil_ind] = valid_intensities
 
         # Ideally we would use `np.ma.corrcoef` here, but it is broken, so use
@@ -434,6 +477,15 @@ class Target:
             wij += wij.T
         else:
             wij = None
+
+        """import json
+        #with open("rij_main", "w") as f:
+        wij.astype(int)
+        np.savetxt("rij_main.csv", rij, delimiter=",", fmt='% 3.5f')
+        np.savetxt("wij_main.csv", wij, delimiter=",", fmt='% 4d')
+        #json.dump(rij.tolist(),f)
+        #with open("wij_main", "w") as f:
+        #    json.dump(wij.tolist(),f)"""
 
         return rij, wij
 
