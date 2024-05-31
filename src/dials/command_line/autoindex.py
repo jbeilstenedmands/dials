@@ -184,6 +184,12 @@ def xyz_to_rlp(xyzobs_px, expt):
     osc_start = 0
     osc_width = 0.5
     i_panel = 0
+    wavelength = 1.23985
+    s0 = (0, 0, -1.0 / wavelength)
+
+    setting_rotation = matrix.sqr(expt.goniometer.get_setting_rotation())
+    rotation_axis = expt.goniometer.get_rotation_axis_datum()
+    sample_rotation = matrix.sqr(expt.goniometer.get_fixed_rotation())
 
     # centroid_px_to_mm_panel
     x, y, z = xyzobs_px.parts()
@@ -197,17 +203,36 @@ def xyz_to_rlp(xyzobs_px, expt):
     ) * osc_width + osc_start  # i.e z_mm (but its actually)
     rot_angle *= DEG2RAD
 
-    s1 = expt.detector[i_panel].get_lab_coord(flex.vec2_double(x_mm, y_mm))
-    s1 = s1 / s1.norms() * (1 / expt.beam.get_wavelength())
-    S = s1 - expt.beam.get_s0()
-    setting_rotation = matrix.sqr(expt.goniometer.get_setting_rotation())
-    rotation_axis = expt.goniometer.get_rotation_axis_datum()
-    sample_rotation = matrix.sqr(expt.goniometer.get_fixed_rotation())
-    # if expt.crystal and crystal_frame:
-    #    sample_rotation *= matrix.sqr(expt.crystal.get_U())
+    # detector things for get_lab_coord
+    # s1 = expt.detector[i_panel].get_lab_coord(flex.vec2_double(x_mm, y_mm)) # requires fast, slow, origin etc.
+    f = expt.detector[i_panel].get_fast_axis()
+    s = expt.detector[i_panel].get_slow_axis()
+    n = expt.detector[i_panel].get_normal()
+    origin = expt.detector[i_panel].get_origin()
+    d_ = matrix.sqr(
+        (
+            f[0],
+            s[0],
+            n[0] + origin[0],
+            f[1],
+            s[1],
+            n[1] + origin[1],
+            f[2],
+            s[2],
+            n[2] + origin[2],
+        )
+    )
+
+    s1 = flex.mat3_double(x_mm.size(), d_) * flex.vec3_double(
+        x_mm, y_mm, flex.double(x_mm.size(), 1.0)
+    )
+    s1 = s1 / s1.norms() * (1 / wavelength)
+    S = s1 - s0
+    # transform S to rlp in correct frame.
     rlp = tuple(setting_rotation.inverse()) * S
     rlp = rlp.rotate_around_origin(rotation_axis, -rot_angle)
     rlp = tuple(sample_rotation.inverse()) * rlp
+
     return rlp
 
 
