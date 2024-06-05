@@ -40,7 +40,6 @@ def _compute_rij_matrix_one_row_block(
     patterson_group,
     weights=True,
     min_pairs=3,
-    epsilons=None,
 ):
     cs = data.crystal_symmetry()
     n_lattices = len(lattices)
@@ -114,7 +113,7 @@ def _compute_rij_matrix_one_row_block(
                     )
                     assert ma_i.size() == ma_j.size()
                     n_pairs = ma_i.size()
-                    if ma_i.size() < 3:
+                    if ma_i.size() < min_pairs:
                         n, cc = (None, None)
                     else:
                         corr, neff = ExtendedDatasetStatistics.weighted_cchalf(
@@ -315,7 +314,6 @@ class Target:
                     self._patterson_group,
                     weights=True,
                     min_pairs=self._min_pairs,
-                    epsilons=epsilons,
                 )
                 for i, _ in enumerate(self._lattices)
             ]
@@ -333,7 +331,6 @@ class Target:
                         wij_matrix += wij
 
         rij_matrix = rij_matrix.toarray().astype(np.float64)
-
         if wij_matrix is not None:
             wij_matrix = wij_matrix.toarray().astype(np.float64)
             if self._weights == "standard_error":
@@ -402,7 +399,6 @@ class Target:
         for i, (mil_ind, eps) in enumerate(zip(indices.values(), epsilons.values())):
             for j, selection in enumerate(slices):
                 # map (i, j) to a column in all_intensities
-
                 column = np.ravel_multi_index((i, j), (n_sym_ops, n_lattices))
                 epsilon_equals_one = eps[selection] == 1
                 valid_mil_ind = mil_ind[selection][epsilon_equals_one]
