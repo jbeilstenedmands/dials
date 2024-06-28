@@ -1551,6 +1551,34 @@ class MultiScaler(MultiScalerBase):
         self._global_Ih_table, self._free_Ih_table = self._create_global_Ih_table(
             self.params.anomalous
         )
+        # set up any special error model options:
+        if self.params.weighting.error_model.error_model_group:
+            minimisation_groups = extract_error_model_groups(
+                self.params.weighting.error_model, self.n_initial_active_scalers
+            )
+            for g in minimisation_groups:
+                this_params = copy.deepcopy(self.params.weighting.error_model)
+                for v in self.params.weighting.error_model.error_model_group:
+                    if v.datasets == g:
+                        if v.basic.a:
+                            this_params.basic.a = v.basic.a
+                        if v.basic.b:
+                            this_params.basic.b = v.basic.b
+                        if v.error_model:
+                            this_params.error_model = v.error_model
+                        if v.basic.minimisation:
+                            this_params.basic.minimisation = v.basic.minimisation
+                for i in g:
+                    self.active_scalers[i].experiment.scaling_model.load_error_model(
+                        this_params
+                    )
+            for i, scaler in enumerate(self.active_scalers):
+                error_model = scaler._experiment.scaling_model.error_model
+                if not error_model.params.minimisation:
+                    continue  # no need to update for this subset
+                self.global_Ih_table.update_weights(error_model, dataset_id=i)
+                if self._free_Ih_table:
+                    self._free_Ih_table.update_weights(error_model, dataset_id=i)
         # now select reflections from across the datasets
         self._select_reflections_for_scaling()
         self._create_Ih_table()

@@ -12,6 +12,7 @@ of course the error model adjustment) before the analysis is done.
 
 from __future__ import annotations
 
+import copy
 import json
 import logging
 import sys
@@ -118,6 +119,17 @@ def refine_error_models(
 
     models = []
     for g in minimisation_groups:
+        this_params = copy.deepcopy(params)
+        for v in params.error_model_group:
+            if v.datasets == g:
+                if v.basic.a:
+                    this_params.basic.a = v.basic.a
+                if v.basic.b:
+                    this_params.basic.b = v.basic.b
+                if v.error_model:
+                    this_params.error_model = v.error_model
+                if v.basic.minimisation:
+                    this_params.basic.minimisation = v.basic.minimisation
         sub_tables = [reflection_tables[i] for i in g]
         Ih_table = IhTable(
             sub_tables,
@@ -125,7 +137,7 @@ def refine_error_models(
             additional_cols=["partiality"],
             anomalous=True,
         )
-        model = BasicErrorModel(basic_params=params.basic)
+        model = BasicErrorModel(basic_params=this_params.basic)
         try:
             model = run_error_model_refinement(
                 model, Ih_table, params.min_partiality, use_stills_filtering
