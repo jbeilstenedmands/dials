@@ -11,12 +11,16 @@
 #include <boost/python.hpp>
 #include <boost/python/def.hpp>
 #include <dials/algorithms/indexing/index.h>
+#include <dials/algorithms/indexing/fastindex.h>
 
 namespace dials { namespace algorithms { namespace boost_python {
 
   using namespace boost::python;
 
   void export_fft3d();
+  void export_xyz_to_rlp() {
+    def("xyz_to_rlp", &xyz_to_rlp);
+  }
 
   void export_assign_indices() {
     typedef AssignIndices w_t;
@@ -56,6 +60,7 @@ namespace dials { namespace algorithms { namespace boost_python {
   BOOST_PYTHON_MODULE(dials_algorithms_indexing_ext) {
     export_fft3d();
     export_assign_indices();
+    export_xyz_to_rlp();
     export_assign_indices_local();
   }
 

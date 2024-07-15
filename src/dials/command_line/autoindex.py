@@ -15,6 +15,7 @@ from dials.algorithms.indexing.basis_vector_search.utils import (
     group_vectors,
     is_approximate_integer_multiple,
 )
+from dials_algorithms_indexing_ext import xyz_to_rlp as xyz_to_rlp_cpp
 
 
 def _find_peaks(
@@ -169,6 +170,7 @@ from dials.array_family import flex
 
 r = flex.reflection_table.from_file("strong_1_60.refl")
 xyzobs_px = r["xyzobs.px.value"]
+print(xyzobs_px)
 st = time.time()
 from dxtbx.serialize import load
 
@@ -190,7 +192,9 @@ def xyz_to_rlp(xyzobs_px, expt):
     setting_rotation = matrix.sqr(expt.goniometer.get_setting_rotation())
     rotation_axis = expt.goniometer.get_rotation_axis_datum()
     sample_rotation = matrix.sqr(expt.goniometer.get_fixed_rotation())
-
+    print(setting_rotation)
+    print(rotation_axis)
+    print(type(sample_rotation))
     # centroid_px_to_mm_panel
     x, y, z = xyzobs_px.parts()
     # fixme this is simple px to mm, but really should be ParallaxCorrectedPxMmStrategy.to_millimeter
@@ -236,8 +240,41 @@ def xyz_to_rlp(xyzobs_px, expt):
     return rlp
 
 
+import time
+
+st = time.time()
 rlp = xyz_to_rlp(xyzobs_px, expt)
-print(len(rlp))
+end = time.time()
+print(end - st)
+
+i_panel = 0
+f = expt.detector[i_panel].get_fast_axis()
+s = expt.detector[i_panel].get_slow_axis()
+n = expt.detector[i_panel].get_normal()
+origin = expt.detector[i_panel].get_origin()
+d_ = matrix.sqr(
+    (
+        f[0],
+        s[0],
+        n[0] + origin[0],
+        f[1],
+        s[1],
+        n[1] + origin[1],
+        f[2],
+        s[2],
+        n[2] + origin[2],
+    )
+)
+st = time.time()
+rlp2 = xyz_to_rlp_cpp(xyzobs_px, matrix.sqr(expt.goniometer.get_fixed_rotation()), d_)
+end = time.time()
+print(end - st)
+print(rlp[100])
+print(rlp2[100])
+for r1, r2 in zip(rlp, rlp2):
+    for i in range(0, 3):
+        assert abs(r1[i] - r2[i]) < 1e-8, f"{r1[i]}, {r2[i]}"
+assert 0
 
 # then find_basis_vectors - fft3d
 candidate_basis_vectors, used_in_indexing = do_fft3d(rlp, d_min=1.8)
