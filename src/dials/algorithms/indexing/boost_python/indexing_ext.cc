@@ -21,6 +21,9 @@ namespace dials { namespace algorithms { namespace boost_python {
   void export_xyz_to_rlp() {
     def("xyz_to_rlp", &xyz_to_rlp);
   }
+  void export_do_full_fft3d() {
+    def("do_full_fft3d", &do_full_fft3d);
+  }
 
   void export_assign_indices() {
     typedef AssignIndices w_t;
@@ -62,6 +65,7 @@ namespace dials { namespace algorithms { namespace boost_python {
     export_assign_indices();
     export_xyz_to_rlp();
     export_assign_indices_local();
+    export_do_full_fft3d();
   }
 
 }}}  // namespace dials::algorithms::boost_python

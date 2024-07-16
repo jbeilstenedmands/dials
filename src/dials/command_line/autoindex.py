@@ -15,6 +15,7 @@ from dials.algorithms.indexing.basis_vector_search.utils import (
     group_vectors,
     is_approximate_integer_multiple,
 )
+from dials_algorithms_indexing_ext import do_full_fft3d
 from dials_algorithms_indexing_ext import xyz_to_rlp as xyz_to_rlp_cpp
 
 
@@ -70,6 +71,11 @@ from scitbx import fftpack, matrix
 import dials_algorithms_indexing_ext
 
 
+def do_cpp_fft3d(rlp, d_min):
+    b_iso = -4 * d_min**2 * math.log(0.05)
+    return do_full_fft3d(rlp, d_min, b_iso)
+
+
 def do_fft3d(rlp, d_min):
     st1 = time.time()
     n_points = 256
@@ -100,9 +106,12 @@ def do_fft3d(rlp, d_min):
     )
     grid_transformed = fft.forward(grid_complex)
     grid_real = flex.pow2(flex.real(grid_transformed))
+
+    print(grid_real[2], grid_real[3])
     del grid_transformed
     st2 = time.time()
     print(f"time to do fft {st2-st1}")
+    assert 0
     sites, volumes, fft_cell = _find_peaks(grid_real, d_min)
     candidate_basis_vectors = sites_to_vecs(sites, volumes, fft_cell)
     return candidate_basis_vectors, used_in_indexing
@@ -274,7 +283,12 @@ print(rlp2[100])
 for r1, r2 in zip(rlp, rlp2):
     for i in range(0, 3):
         assert abs(r1[i] - r2[i]) < 1e-8, f"{r1[i]}, {r2[i]}"
-assert 0
+
+st1 = time.time()
+res = do_cpp_fft3d(rlp, d_min=1.8)
+st2 = time.time()
+print(res[2], res[3])
+print(st2 - st1)
 
 # then find_basis_vectors - fft3d
 candidate_basis_vectors, used_in_indexing = do_fft3d(rlp, d_min=1.8)

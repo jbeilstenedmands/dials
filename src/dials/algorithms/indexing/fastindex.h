@@ -5,6 +5,7 @@
 #include <cctbx/miller.h>
 #include <scitbx/constants.h>
 #include <dials/array_family/scitbx_shared_and_versa.h>
+#include "gemmi/third_party/pocketfft_hdronly.h"
 
 class SimpleBeam {
 public:
@@ -91,4 +92,91 @@ scitbx::af::shared<scitbx::vec3<double>> xyz_to_rlp(
     rlp[i] = gonio.sample_rotation_inverse * rlp_this;
   }
   return rlp;
+}
+
+std::vector<double> map_centroids_to_reciprocal_space_grid(
+  af::const_ref<scitbx::vec3<double>> const& reciprocal_space_vectors,
+  double d_min,
+  double b_iso = 0) {
+  const int n_points = 256;
+  const double rlgrid = 2 / (d_min * n_points);
+  const double one_over_rlgrid = 1 / rlgrid;
+  const int half_n_points = n_points / 2;
+
+  std::vector<double> data_in(256 * 256 * 256);
+  for (int i = 0; i < reciprocal_space_vectors.size(); i++) {
+    const scitbx::vec3<double> v = reciprocal_space_vectors[i];
+    const double v_length = v.length();
+    const double d_spacing = 1 / v_length;
+    if (d_spacing < d_min) {
+      continue;
+    }
+    scitbx::vec3<int> coord;
+    for (int j = 0; j < 3; j++) {
+      coord[j] = scitbx::math::iround(v[j] * one_over_rlgrid) + half_n_points;
+    }
+    if ((coord.max() >= n_points) || coord.min() < 0) {
+      continue;
+    }
+    double T;
+    if (b_iso != 0) {
+      T = std::exp(-b_iso * v_length * v_length / 4.0);
+    } else {
+      T = 1;
+    }
+    size_t index = coord[2] + (256 * coord[1]) + (256 * 256 * coord[0]);
+    data_in[index] = T;
+  }
+  return data_in;
+}
+
+template <typename T>
+std::ostream& operator<<(std::ostream& os, const std::vector<T>& vec) {
+  os << '[';
+  for (auto val : vec) os << val << ',';
+  os << ']';
+
+  return os;
+}
+
+scitbx::af::shared<double> do_test_fft3d(std::vector<double> data_in) {
+  using namespace pocketfft;
+  using namespace std;
+  shape_t shape_in{256, 256, 256};
+  stride_t stride_in{
+    sizeof(double),
+    sizeof(double) * 256,
+    sizeof(double) * 256 * 256};  // must have the size of each element. Must have
+                                  // size() equal to shape_in.size()
+  stride_t stride_out{
+    sizeof(complex<double>),
+    sizeof(complex<double>) * 256,
+    sizeof(complex<double>) * 256 * 256};  // must have the size of each element. Must
+                                           // have size() equal to shape_in.size()
+  shape_t axes{0, 1, 2};                   // 0 to shape.size()-1 inclusive
+  bool forward{FORWARD};
+  vector<complex<double>> data_out(256 * 256 * 256);
+  double fct{1.0f};
+  r2c(shape_in,
+      stride_in,
+      stride_out,
+      axes,
+      forward,
+      data_in.data(),
+      data_out.data(),
+      fct);
+  scitbx::af::shared<double> real_out(256 * 256 * 256);
+  for (int i = 0; i < data_out.size(); ++i) {
+    real_out[i] = std::pow(data_out[i].real(), 2);
+  }
+  return real_out;
+}
+
+scitbx::af::shared<double> do_full_fft3d(
+  af::const_ref<scitbx::vec3<double>> const& reciprocal_space_vectors,
+  double d_min,
+  double b_iso = 0) {
+  std::vector<double> data_in =
+    map_centroids_to_reciprocal_space_grid(reciprocal_space_vectors, d_min, b_iso);
+  return do_test_fft3d(data_in);
 }
