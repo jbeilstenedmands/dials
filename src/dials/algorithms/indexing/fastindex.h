@@ -94,8 +94,9 @@ scitbx::af::shared<scitbx::vec3<double>> xyz_to_rlp(
   return rlp;
 }
 
-std::vector<double> map_centroids_to_reciprocal_space_grid(
+std::vector<double> map_centroids_to_reciprocal_space_grid_cpp(
   af::const_ref<scitbx::vec3<double>> const& reciprocal_space_vectors,
+  af::ref<bool> const& selection,
   double d_min,
   double b_iso = 0) {
   const int n_points = 256;
@@ -109,6 +110,7 @@ std::vector<double> map_centroids_to_reciprocal_space_grid(
     const double v_length = v.length();
     const double d_spacing = 1 / v_length;
     if (d_spacing < d_min) {
+      selection[i] = false;
       continue;
     }
     scitbx::vec3<int> coord;
@@ -116,6 +118,7 @@ std::vector<double> map_centroids_to_reciprocal_space_grid(
       coord[j] = scitbx::math::iround(v[j] * one_over_rlgrid) + half_n_points;
     }
     if ((coord.max() >= n_points) || coord.min() < 0) {
+      selection[i] = false;
       continue;
     }
     double T;
@@ -130,16 +133,13 @@ std::vector<double> map_centroids_to_reciprocal_space_grid(
   return data_in;
 }
 
-template <typename T>
-std::ostream& operator<<(std::ostream& os, const std::vector<T>& vec) {
-  os << '[';
-  for (auto val : vec) os << val << ',';
-  os << ']';
 
-  return os;
-}
-
-scitbx::af::shared<double> do_test_fft3d(std::vector<double> data_in) {
+scitbx::af::shared<double> do_fft3d(
+  af::const_ref<scitbx::vec3<double>> const& reciprocal_space_vectors,
+  double d_min,
+  double b_iso = 0) {
+  std::vector<double> data_in =
+    map_centroids_to_reciprocal_space_grid_cpp(reciprocal_space_vectors, d_min, b_iso);
   using namespace pocketfft;
   using namespace std;
   shape_t shape_in{256, 256, 256};
@@ -166,17 +166,23 @@ scitbx::af::shared<double> do_test_fft3d(std::vector<double> data_in) {
       data_out.data(),
       fct);
   scitbx::af::shared<double> real_out(256 * 256 * 256);
-  for (int i = 0; i < data_out.size(); ++i) {
-    real_out[i] = std::pow(data_out[i].real(), 2);
+  for (int i = 0; i < 256; ++i){
+    for (int j = 0; j < 256; ++j){
+        for (int k = 0; k < 256; ++k){
+            size_t array_index = i + (256 * j) + (256 * 256 * k);
+            if (k <= 128){
+                real_out[array_index] = std::pow(data_out[array_index].real(), 2);
+            }
+            else {
+                size_t index = (255-i) + (256 * (255-j)) + (256 * 256 * (255-k));
+                real_out[array_index] = std::pow(data_out[index].real(), 2);
+            }
+        }
+    }
   }
-  return real_out;
-}
 
-scitbx::af::shared<double> do_full_fft3d(
-  af::const_ref<scitbx::vec3<double>> const& reciprocal_space_vectors,
-  double d_min,
-  double b_iso = 0) {
-  std::vector<double> data_in =
-    map_centroids_to_reciprocal_space_grid(reciprocal_space_vectors, d_min, b_iso);
-  return do_test_fft3d(data_in);
+  //for (int i = 0; i < data_out.size(); ++i) {
+  //  real_out[i] = std::pow(data_out[i].real(), 2);
+  //}
+  return real_out;
 }

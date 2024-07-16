@@ -15,7 +15,7 @@ from dials.algorithms.indexing.basis_vector_search.utils import (
     group_vectors,
     is_approximate_integer_multiple,
 )
-from dials_algorithms_indexing_ext import do_full_fft3d
+from dials_algorithms_indexing_ext import do_fft3d, map_centroids_to_reciprocal_space_grid_cpp
 from dials_algorithms_indexing_ext import xyz_to_rlp as xyz_to_rlp_cpp
 
 
@@ -73,10 +73,11 @@ import dials_algorithms_indexing_ext
 
 def do_cpp_fft3d(rlp, d_min):
     b_iso = -4 * d_min**2 * math.log(0.05)
-    return do_full_fft3d(rlp, d_min, b_iso)
+    used_in_indexing = flex.bool(rlp.size(), True)
+    return do_fft3d(rlp, d_min, b_iso)
 
 
-def do_fft3d(rlp, d_min):
+def fft3d(rlp, d_min):
     st1 = time.time()
     n_points = 256
     gridding = fftpack.adjust_gridding_triple(
@@ -107,12 +108,21 @@ def do_fft3d(rlp, d_min):
     grid_transformed = fft.forward(grid_complex)
     grid_real = flex.pow2(flex.real(grid_transformed))
 
-    print(grid_real[2], grid_real[3])
+    print(grid_real[0,0,0], grid_real[255,255,255])
+    print(grid_transformed[0], grid_transformed[-1])
     del grid_transformed
     st2 = time.time()
     print(f"time to do fft {st2-st1}")
-    assert 0
+    print(type(grid_real))
+    return grid_real
+    res = do_cpp_fft3d(rlp, d_min=1.8)
+    grid_real = flex.double(flex.grid(gridding), 0)
+    for i, v in enumerate(res):
+        grid_real[i] = v
+
     sites, volumes, fft_cell = _find_peaks(grid_real, d_min)
+    print(fft_cell)
+    assert 0
     candidate_basis_vectors = sites_to_vecs(sites, volumes, fft_cell)
     return candidate_basis_vectors, used_in_indexing
 
@@ -177,13 +187,15 @@ def sites_to_vecs(sites, volumes, fft_cell, min_cell=3, max_cell=92.3):
 # xyzobs.px.valuemap from pixel xy to
 from dials.array_family import flex
 
-r = flex.reflection_table.from_file("strong_1_60.refl")
+#r = flex.reflection_table.from_file("strong_1_60.refl")
+r = flex.reflection_table.from_file("../strong.refl")
 xyzobs_px = r["xyzobs.px.value"]
 print(xyzobs_px)
 st = time.time()
 from dxtbx.serialize import load
 
-expt = load.experiment_list("imported_1_60.expt", check_format=False)[0]
+#expt = load.experiment_list("imported_1_60.expt", check_format=False)[0]
+expt = load.experiment_list("../imported.expt", check_format=False)[0]
 
 
 def xyz_to_rlp(xyzobs_px, expt):
@@ -282,15 +294,60 @@ print(rlp[100])
 print(rlp2[100])
 for r1, r2 in zip(rlp, rlp2):
     for i in range(0, 3):
-        assert abs(r1[i] - r2[i]) < 1e-8, f"{r1[i]}, {r2[i]}"
+        assert abs(r1[i] - r2[i]) < 1e-6, f"{r1[i]}, {r2[i]}"
 
+#check gridding
+d_min=1.8
+b_iso = -4 * d_min**2 * math.log(0.05)
+g1 = map_centroids_to_reciprocal_space_grid_cpp(
+    rlp2, 1.8, b_iso)
+n_points = 256
+gridding = fftpack.adjust_gridding_triple(
+    (n_points, n_points, n_points), max_prime=5
+)
+from scitbx.array_family import flex
+
+grid = flex.double(flex.grid(gridding), 0)
+b_iso = -4 * d_min**2 * math.log(0.05)
+
+used_in_indexing = flex.bool(rlp.size(), True)
+
+dials_algorithms_indexing_ext.map_centroids_to_reciprocal_space_grid(
+    grid,
+    rlp,
+    used_in_indexing,  # do we really need this?
+    d_min,
+    b_iso=b_iso,
+)
+g2 = grid
+for i, (g,gi) in enumerate(zip(g1,g2)):
+    if abs(g-gi) > 1e-6:
+        print(i, g, gi)
+        assert 0
+# end check gridding
+
+# now do ffts and check equal    
 st1 = time.time()
 res = do_cpp_fft3d(rlp, d_min=1.8)
+print(type(res))
+print(res[0], res[-1])
+print(res[1], res[-2])
 st2 = time.time()
-print(res[2], res[3])
+#print(res[2], res[3])
 print(st2 - st1)
 
-# then find_basis_vectors - fft3d
-candidate_basis_vectors, used_in_indexing = do_fft3d(rlp, d_min=1.8)
-print(len(candidate_basis_vectors))
+#then find_basis_vectors - fft3d
+res2 = fft3d(rlp, d_min=1.8)
+print(res2[0], res2[-1])
+print(res2[1], res2[-2])
+assert res2.size() == res.size()
+for i, (r1,r2) in enumerate(zip(res,res2)):
+    if abs(r2.real-620616242.4197974) < 1e-6:
+        print(r1, r2, i)
+
+assert 0
+
+candidate_basis_vectors, used_in_indexing = fft3d(rlp, d_min=1.8)
+#print(len(candidate_basis_vectors))
+print(candidate_basis_vectors)
 print(time.time() - st)

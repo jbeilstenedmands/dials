@@ -21,8 +21,11 @@ namespace dials { namespace algorithms { namespace boost_python {
   void export_xyz_to_rlp() {
     def("xyz_to_rlp", &xyz_to_rlp);
   }
-  void export_do_full_fft3d() {
-    def("do_full_fft3d", &do_full_fft3d);
+  void export_do_fft3d() {
+    def("do_fft3d", &do_fft3d);
+  }
+  void export_map_centroids_to_reciprocal_space_grid_cpp(){
+    def("map_centroids_to_reciprocal_space_grid_cpp", &map_centroids_to_reciprocal_space_grid_cpp);
   }
 
   void export_assign_indices() {
@@ -65,7 +68,8 @@ namespace dials { namespace algorithms { namespace boost_python {
     export_assign_indices();
     export_xyz_to_rlp();
     export_assign_indices_local();
-    export_do_full_fft3d();
+    export_do_fft3d();
+    export_map_centroids_to_reciprocal_space_grid_cpp();
   }
 
 }}}  // namespace dials::algorithms::boost_python
