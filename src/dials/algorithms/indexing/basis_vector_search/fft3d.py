@@ -200,7 +200,7 @@ class FFT3D(Strategy):
         return self.candidate_basis_vectors, used_in_indexing
 
     def _fft(self, reciprocal_lattice_vectors, d_min):
-        '''(
+        """(
             reciprocal_space_grid,
             used_in_indexing,
         ) = self._map_centroids_to_reciprocal_space_grid(
@@ -217,7 +217,7 @@ class FFT3D(Strategy):
         grid_real = flex.double(flex.grid(gridding), 0)
         for i, v in enumerate(res):
             grid_real[i] = v
-        return grid_real, used_in_indexing'''
+        return grid_real, used_in_indexing"""
 
         (
             reciprocal_space_grid,
@@ -247,7 +247,6 @@ class FFT3D(Strategy):
         grid_transformed = fft.forward(grid_complex)
         grid_real = flex.pow2(flex.real(grid_transformed))
         del grid_transformed
-        print(grid_real[0], grid_real[-1])
         return grid_real, used_in_indexing
 
     def _map_centroids_to_reciprocal_space_grid(

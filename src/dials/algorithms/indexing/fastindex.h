@@ -94,9 +94,10 @@ scitbx::af::shared<scitbx::vec3<double>> xyz_to_rlp(
   return rlp;
 }
 
-std::vector<double> map_centroids_to_reciprocal_space_grid_cpp(
+using namespace pocketfft;
+
+std::vector<std::complex<double>> map_centroids_to_reciprocal_space_grid_cpp(
   af::const_ref<scitbx::vec3<double>> const& reciprocal_space_vectors,
-  af::ref<bool> const& selection,
   double d_min,
   double b_iso = 0) {
   const int n_points = 256;
@@ -104,13 +105,13 @@ std::vector<double> map_centroids_to_reciprocal_space_grid_cpp(
   const double one_over_rlgrid = 1 / rlgrid;
   const int half_n_points = n_points / 2;
 
-  std::vector<double> data_in(256 * 256 * 256);
+  std::vector<std::complex<double>> data_in(256 * 256 * 256);
   for (int i = 0; i < reciprocal_space_vectors.size(); i++) {
     const scitbx::vec3<double> v = reciprocal_space_vectors[i];
     const double v_length = v.length();
     const double d_spacing = 1 / v_length;
     if (d_spacing < d_min) {
-      selection[i] = false;
+      // selection[i] = false;
       continue;
     }
     scitbx::vec3<int> coord;
@@ -118,7 +119,7 @@ std::vector<double> map_centroids_to_reciprocal_space_grid_cpp(
       coord[j] = scitbx::math::iround(v[j] * one_over_rlgrid) + half_n_points;
     }
     if ((coord.max() >= n_points) || coord.min() < 0) {
-      selection[i] = false;
+      // selection[i] = false;
       continue;
     }
     double T;
@@ -128,45 +129,52 @@ std::vector<double> map_centroids_to_reciprocal_space_grid_cpp(
       T = 1;
     }
     size_t index = coord[2] + (256 * coord[1]) + (256 * 256 * coord[0]);
-    data_in[index] = T;
+    data_in[index] = {T, 0.0};
   }
   return data_in;
 }
-
 
 scitbx::af::shared<double> do_fft3d(
   af::const_ref<scitbx::vec3<double>> const& reciprocal_space_vectors,
   double d_min,
   double b_iso = 0) {
-  std::vector<double> data_in =
+  std::vector<std::complex<double>> complex_data_in =
     map_centroids_to_reciprocal_space_grid_cpp(reciprocal_space_vectors, d_min, b_iso);
-  using namespace pocketfft;
-  using namespace std;
+
+  /**std::vector<complex<double>> complex_data_in(256*256*256);
+  for (int i=0;i<complex_data_in.size();++i){
+    complex_data_in[i] = {data_in[i], 0.0};
+  }**/
   shape_t shape_in{256, 256, 256};
-  stride_t stride_in{
-    sizeof(double),
-    sizeof(double) * 256,
-    sizeof(double) * 256 * 256};  // must have the size of each element. Must have
-                                  // size() equal to shape_in.size()
-  stride_t stride_out{
-    sizeof(complex<double>),
-    sizeof(complex<double>) * 256,
-    sizeof(complex<double>) * 256 * 256};  // must have the size of each element. Must
-                                           // have size() equal to shape_in.size()
-  shape_t axes{0, 1, 2};                   // 0 to shape.size()-1 inclusive
+  stride_t stride_in{sizeof(std::complex<double>),
+                     sizeof(std::complex<double>) * 256,
+                     sizeof(std::complex<double>) * 256
+                       * 256};  // must have the size of each element. Must have
+                                // size() equal to shape_in.size()
+  stride_t stride_out{sizeof(std::complex<double>),
+                      sizeof(std::complex<double>) * 256,
+                      sizeof(std::complex<double>) * 256
+                        * 256};  // must have the size of each element. Must
+                                 // have size() equal to shape_in.size()
+  shape_t axes{0, 1, 2};         // 0 to shape.size()-1 inclusive
   bool forward{FORWARD};
-  vector<complex<double>> data_out(256 * 256 * 256);
+  std::vector<std::complex<double>> data_out(256 * 256 * 256);
   double fct{1.0f};
-  r2c(shape_in,
+  size_t nthreads = 0;
+  c2c(shape_in,
       stride_in,
       stride_out,
       axes,
       forward,
-      data_in.data(),
+      complex_data_in.data(),
       data_out.data(),
-      fct);
+      fct,
+      nthreads);
   scitbx::af::shared<double> real_out(256 * 256 * 256);
-  for (int i = 0; i < 256; ++i){
+  for (int i = 0; i < real_out.size(); ++i) {
+    real_out[i] = std::pow(data_out[i].real(), 2);
+  }
+  /**for (int i = 0; i < 256; ++i){
     for (int j = 0; j < 256; ++j){
         for (int k = 0; k < 256; ++k){
             size_t array_index = i + (256 * j) + (256 * 256 * k);
@@ -179,10 +187,10 @@ scitbx::af::shared<double> do_fft3d(
             }
         }
     }
-  }
+  }**/
 
-  //for (int i = 0; i < data_out.size(); ++i) {
-  //  real_out[i] = std::pow(data_out[i].real(), 2);
-  //}
+  // for (int i = 0; i < data_out.size(); ++i) {
+  //   real_out[i] = std::pow(data_out[i].real(), 2);
+  // }
   return real_out;
 }

@@ -15,7 +15,9 @@ from dials.algorithms.indexing.basis_vector_search.utils import (
     group_vectors,
     is_approximate_integer_multiple,
 )
-from dials_algorithms_indexing_ext import do_fft3d, map_centroids_to_reciprocal_space_grid_cpp
+from dials_algorithms_indexing_ext import (
+    do_fft3d,  # , map_centroids_to_reciprocal_space_grid_cpp
+)
 from dials_algorithms_indexing_ext import xyz_to_rlp as xyz_to_rlp_cpp
 
 
@@ -107,13 +109,9 @@ def fft3d(rlp, d_min):
     )
     grid_transformed = fft.forward(grid_complex)
     grid_real = flex.pow2(flex.real(grid_transformed))
-
-    print(grid_real[0,0,0], grid_real[255,255,255])
-    print(grid_transformed[0], grid_transformed[-1])
     del grid_transformed
     st2 = time.time()
     print(f"time to do fft {st2-st1}")
-    print(type(grid_real))
     return grid_real
     res = do_cpp_fft3d(rlp, d_min=1.8)
     grid_real = flex.double(flex.grid(gridding), 0)
@@ -187,14 +185,14 @@ def sites_to_vecs(sites, volumes, fft_cell, min_cell=3, max_cell=92.3):
 # xyzobs.px.valuemap from pixel xy to
 from dials.array_family import flex
 
-#r = flex.reflection_table.from_file("strong_1_60.refl")
+# r = flex.reflection_table.from_file("strong_1_60.refl")
 r = flex.reflection_table.from_file("../strong.refl")
 xyzobs_px = r["xyzobs.px.value"]
 print(xyzobs_px)
 st = time.time()
 from dxtbx.serialize import load
 
-#expt = load.experiment_list("imported_1_60.expt", check_format=False)[0]
+# expt = load.experiment_list("imported_1_60.expt", check_format=False)[0]
 expt = load.experiment_list("../imported.expt", check_format=False)[0]
 
 
@@ -296,8 +294,8 @@ for r1, r2 in zip(rlp, rlp2):
     for i in range(0, 3):
         assert abs(r1[i] - r2[i]) < 1e-6, f"{r1[i]}, {r2[i]}"
 
-#check gridding
-d_min=1.8
+# check gridding
+"""d_min=1.8
 b_iso = -4 * d_min**2 * math.log(0.05)
 g1 = map_centroids_to_reciprocal_space_grid_cpp(
     rlp2, 1.8, b_iso)
@@ -324,30 +322,28 @@ for i, (g,gi) in enumerate(zip(g1,g2)):
     if abs(g-gi) > 1e-6:
         print(i, g, gi)
         assert 0
-# end check gridding
+# end check gridding"""
 
-# now do ffts and check equal    
+# now do ffts and check equal
 st1 = time.time()
 res = do_cpp_fft3d(rlp, d_min=1.8)
 print(type(res))
-print(res[0], res[-1])
-print(res[1], res[-2])
+print(res[0] / res[1])
 st2 = time.time()
-#print(res[2], res[3])
+# print(res[2], res[3])
 print(st2 - st1)
 
-#then find_basis_vectors - fft3d
+# then find_basis_vectors - fft3d
 res2 = fft3d(rlp, d_min=1.8)
-print(res2[0], res2[-1])
-print(res2[1], res2[-2])
+print(res2[0] / res2[1])
 assert res2.size() == res.size()
-for i, (r1,r2) in enumerate(zip(res,res2)):
-    if abs(r2.real-620616242.4197974) < 1e-6:
+for i, (r1, r2) in enumerate(zip(res, res2)):
+    if abs(r2.real - r1) > 1e-6:
         print(r1, r2, i)
-
+        assert 0
 assert 0
 
 candidate_basis_vectors, used_in_indexing = fft3d(rlp, d_min=1.8)
-#print(len(candidate_basis_vectors))
+# print(len(candidate_basis_vectors))
 print(candidate_basis_vectors)
 print(time.time() - st)
