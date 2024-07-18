@@ -141,10 +141,6 @@ scitbx::af::shared<double> do_fft3d(
   std::vector<std::complex<double>> complex_data_in =
     map_centroids_to_reciprocal_space_grid_cpp(reciprocal_space_vectors, d_min, b_iso);
 
-  /**std::vector<complex<double>> complex_data_in(256*256*256);
-  for (int i=0;i<complex_data_in.size();++i){
-    complex_data_in[i] = {data_in[i], 0.0};
-  }**/
   shape_t shape_in{256, 256, 256};
   stride_t stride_in{sizeof(std::complex<double>),
                      sizeof(std::complex<double>) * 256,
@@ -160,7 +156,7 @@ scitbx::af::shared<double> do_fft3d(
   bool forward{FORWARD};
   std::vector<std::complex<double>> data_out(256 * 256 * 256);
   double fct{1.0f};
-  size_t nthreads = 0;
+  size_t nthreads = 0;  // use all threads available
   c2c(shape_in,
       stride_in,
       stride_out,
@@ -174,23 +170,5 @@ scitbx::af::shared<double> do_fft3d(
   for (int i = 0; i < real_out.size(); ++i) {
     real_out[i] = std::pow(data_out[i].real(), 2);
   }
-  /**for (int i = 0; i < 256; ++i){
-    for (int j = 0; j < 256; ++j){
-        for (int k = 0; k < 256; ++k){
-            size_t array_index = i + (256 * j) + (256 * 256 * k);
-            if (k <= 128){
-                real_out[array_index] = std::pow(data_out[array_index].real(), 2);
-            }
-            else {
-                size_t index = (255-i) + (256 * (255-j)) + (256 * 256 * (255-k));
-                real_out[array_index] = std::pow(data_out[index].real(), 2);
-            }
-        }
-    }
-  }**/
-
-  // for (int i = 0; i < data_out.size(); ++i) {
-  //   real_out[i] = std::pow(data_out[i].real(), 2);
-  // }
   return real_out;
 }
