@@ -200,24 +200,6 @@ class FFT3D(Strategy):
         return self.candidate_basis_vectors, used_in_indexing
 
     def _fft(self, reciprocal_lattice_vectors, d_min):
-        """(
-            reciprocal_space_grid,
-            used_in_indexing,
-        ) = self._map_centroids_to_reciprocal_space_grid(
-            reciprocal_lattice_vectors, d_min
-        )
-        n_points=256
-        gridding = fftpack.adjust_gridding_triple(
-            (n_points, n_points, n_points), max_prime=5
-        )
-        from dials_algorithms_indexing_ext import do_fft3d
-        b_iso = -4 * d_min**2 * math.log(0.05)
-        res = do_fft3d(reciprocal_lattice_vectors, d_min, b_iso)
-        #used_in_indexing = flex.bool(reciprocal_lattice_vectors.size(), True)
-        grid_real = flex.double(flex.grid(gridding), 0)
-        for i, v in enumerate(res):
-            grid_real[i] = v
-        return grid_real, used_in_indexing"""
 
         (
             reciprocal_space_grid,

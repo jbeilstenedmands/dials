@@ -80,7 +80,6 @@ def do_cpp_fft3d(rlp, d_min):
 
 
 def fft3d(rlp, d_min):
-    st1 = time.time()
     n_points = 256
     gridding = fftpack.adjust_gridding_triple(
         (n_points, n_points, n_points), max_prime=5
@@ -110,19 +109,13 @@ def fft3d(rlp, d_min):
     grid_transformed = fft.forward(grid_complex)
     grid_real = flex.pow2(flex.real(grid_transformed))
     del grid_transformed
-    st2 = time.time()
-    print(f"time to do fft {st2-st1}")
-    return grid_real
-    res = do_cpp_fft3d(rlp, d_min=1.8)
-    grid_real = flex.double(flex.grid(gridding), 0)
-    for i, v in enumerate(res):
-        grid_real[i] = v
+    return grid_real, used_in_indexing
 
+
+def candidate_basis_vecs_from_grid(grid_real, d_min):
     sites, volumes, fft_cell = _find_peaks(grid_real, d_min)
-    print(fft_cell)
-    assert 0
     candidate_basis_vectors = sites_to_vecs(sites, volumes, fft_cell)
-    return candidate_basis_vectors, used_in_indexing
+    return candidate_basis_vectors
 
 
 def sites_to_vecs(sites, volumes, fft_cell, min_cell=3, max_cell=92.3):
@@ -188,8 +181,7 @@ from dials.array_family import flex
 # r = flex.reflection_table.from_file("strong_1_60.refl")
 r = flex.reflection_table.from_file("../strong.refl")
 xyzobs_px = r["xyzobs.px.value"]
-print(xyzobs_px)
-st = time.time()
+
 from dxtbx.serialize import load
 
 # expt = load.experiment_list("imported_1_60.expt", check_format=False)[0]
@@ -211,9 +203,7 @@ def xyz_to_rlp(xyzobs_px, expt):
     setting_rotation = matrix.sqr(expt.goniometer.get_setting_rotation())
     rotation_axis = expt.goniometer.get_rotation_axis_datum()
     sample_rotation = matrix.sqr(expt.goniometer.get_fixed_rotation())
-    print(setting_rotation)
-    print(rotation_axis)
-    print(type(sample_rotation))
+
     # centroid_px_to_mm_panel
     x, y, z = xyzobs_px.parts()
     # fixme this is simple px to mm, but really should be ParallaxCorrectedPxMmStrategy.to_millimeter
@@ -259,91 +249,118 @@ def xyz_to_rlp(xyzobs_px, expt):
     return rlp
 
 
-import time
+def run_main_version():
+    st = time.time()
+    rlp = xyz_to_rlp(xyzobs_px, expt)
+    end = time.time()
+    print(f"Time for xyz to rlp: {(end - st):.6f}")
 
-st = time.time()
-rlp = xyz_to_rlp(xyzobs_px, expt)
-end = time.time()
-print(end - st)
+    st = time.time()
+    res, used = fft3d(rlp, d_min=1.8)
+    end = time.time()
+    print(f"Time for fft3d: {(end - st):.6f}")
+    return res, used
 
-i_panel = 0
-f = expt.detector[i_panel].get_fast_axis()
-s = expt.detector[i_panel].get_slow_axis()
-n = expt.detector[i_panel].get_normal()
-origin = expt.detector[i_panel].get_origin()
-d_ = matrix.sqr(
-    (
-        f[0],
-        s[0],
-        n[0] + origin[0],
-        f[1],
-        s[1],
-        n[1] + origin[1],
-        f[2],
-        s[2],
-        n[2] + origin[2],
+
+def run_cpp_version():
+
+    st = time.time()
+    i_panel = 0
+    f = expt.detector[i_panel].get_fast_axis()
+    s = expt.detector[i_panel].get_slow_axis()
+    n = expt.detector[i_panel].get_normal()
+    origin = expt.detector[i_panel].get_origin()
+    d_ = matrix.sqr(
+        (
+            f[0],
+            s[0],
+            n[0] + origin[0],
+            f[1],
+            s[1],
+            n[1] + origin[1],
+            f[2],
+            s[2],
+            n[2] + origin[2],
+        )
     )
-)
+    rlp = xyz_to_rlp_cpp(
+        xyzobs_px, matrix.sqr(expt.goniometer.get_fixed_rotation()), d_
+    )
+    end = time.time()
+    print(f"Time for xyz to rlp: {(end - st):.6f}")
+
+    st = time.time()
+    res = do_cpp_fft3d(rlp, d_min=1.8)
+    end = time.time()
+    print(f"Time for fft3d: {(end - st):.6f}")
+    return res
+
+
+print("running main version")
+res_main, used = run_main_version()
+
+print("running cpp version")
+res_cpp = run_cpp_version()
+
+
+def check_fft_equivalence(res_cpp, res_main):
+    print("Checking equivalence of fft results")
+    assert res_cpp.size() == res_main.size()
+    for i, (r1, r2) in enumerate(zip(res_cpp, res_main)):
+        if abs(r2 - r1) > 1e-6:
+            print(r1, r2, i)
+            assert 0
+
+
+# check_fft_equivalence(res_cpp, res_main)
+
+use_cpp = False
+if use_cpp:
+    grid_real = flex.double(flex.grid((256, 256, 256)), 0)
+    for i, v in enumerate(res_cpp):
+        grid_real[i] = v
+else:
+    grid_real = res_main
+
 st = time.time()
-rlp2 = xyz_to_rlp_cpp(xyzobs_px, matrix.sqr(expt.goniometer.get_fixed_rotation()), d_)
+candidate_basis_vecs_from_grid(grid_real, d_min=1.8)
 end = time.time()
-print(end - st)
-print(rlp[100])
-print(rlp2[100])
-for r1, r2 in zip(rlp, rlp2):
-    for i in range(0, 3):
-        assert abs(r1[i] - r2[i]) < 1e-6, f"{r1[i]}, {r2[i]}"
+print(f"Time for finding candidate basis vecs: {(end - st):.6f}")
 
-# check gridding
-"""d_min=1.8
-b_iso = -4 * d_min**2 * math.log(0.05)
-g1 = map_centroids_to_reciprocal_space_grid_cpp(
-    rlp2, 1.8, b_iso)
-n_points = 256
-gridding = fftpack.adjust_gridding_triple(
-    (n_points, n_points, n_points), max_prime=5
-)
-from scitbx.array_family import flex
+# end
+def check_rlp_equivalence(rlp, rlp2):
+    for r1, r2 in zip(rlp, rlp2):
+        for i in range(0, 3):
+            assert abs(r1[i] - r2[i]) < 1e-6, f"{r1[i]}, {r2[i]}"
 
-grid = flex.double(flex.grid(gridding), 0)
-b_iso = -4 * d_min**2 * math.log(0.05)
 
-used_in_indexing = flex.bool(rlp.size(), True)
+def test_gridding_equivalence():
+    """d_min=1.8
+    b_iso = -4 * d_min**2 * math.log(0.05)
+    g1 = map_centroids_to_reciprocal_space_grid_cpp(
+        rlp2, 1.8, b_iso)
+    n_points = 256
+    gridding = fftpack.adjust_gridding_triple(
+        (n_points, n_points, n_points), max_prime=5
+    )
+    from scitbx.array_family import flex
 
-dials_algorithms_indexing_ext.map_centroids_to_reciprocal_space_grid(
-    grid,
-    rlp,
-    used_in_indexing,  # do we really need this?
-    d_min,
-    b_iso=b_iso,
-)
-g2 = grid
-for i, (g,gi) in enumerate(zip(g1,g2)):
-    if abs(g-gi) > 1e-6:
-        print(i, g, gi)
-        assert 0
-# end check gridding"""
+    grid = flex.double(flex.grid(gridding), 0)
+    b_iso = -4 * d_min**2 * math.log(0.05)
 
-# now do ffts and check equal
-st1 = time.time()
-res = do_cpp_fft3d(rlp, d_min=1.8)
-print(type(res))
-print(res[0] / res[1])
-st2 = time.time()
-# print(res[2], res[3])
-print(st2 - st1)
+    used_in_indexing = flex.bool(rlp.size(), True)
 
-# then find_basis_vectors - fft3d
-res2 = fft3d(rlp, d_min=1.8)
-print(res2[0] / res2[1])
-assert res2.size() == res.size()
-for i, (r1, r2) in enumerate(zip(res, res2)):
-    if abs(r2.real - r1) > 1e-6:
-        print(r1, r2, i)
-        assert 0
-assert 0
-
-candidate_basis_vectors, used_in_indexing = fft3d(rlp, d_min=1.8)
-# print(len(candidate_basis_vectors))
-print(candidate_basis_vectors)
-print(time.time() - st)
+    dials_algorithms_indexing_ext.map_centroids_to_reciprocal_space_grid(
+        grid,
+        rlp,
+        used_in_indexing,  # do we really need this?
+        d_min,
+        b_iso=b_iso,
+    )
+    g2 = grid
+    for i, (g,gi) in enumerate(zip(g1,g2)):
+        if abs(g-gi) > 1e-6:
+            print(i, g, gi)
+            assert 0
+    # end check gridding"""
+    pass
