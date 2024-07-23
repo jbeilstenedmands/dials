@@ -8,6 +8,7 @@
 #include "gemmi/third_party/pocketfft_hdronly.h"
 #include <map>
 #include <stack>
+#include <algorithm>
 
 class SimpleBeam {
 public:
@@ -137,11 +138,10 @@ std::vector<std::complex<double>> map_centroids_to_reciprocal_space_grid_cpp(
 }
 
 void do_floodfill(scitbx::af::shared<double> grid,
-                  double d_min,
                   double rmsd_cutoff = 15.0,
                   double peak_volume_cutoff = 0.15) {
   int n_points = 256;
-  double fft_cell_length = n_points * d_min / 2;
+  // double fft_cell_length = n_points * d_min / 2;
   // first calc rmsd and use this to create a binary grid
   double sumg = 0.0;
   for (int i = 0; i < grid.size(); ++i) {
@@ -155,7 +155,7 @@ void do_floodfill(scitbx::af::shared<double> grid,
   double rmsd = std::pow(sum_delta_sq / grid.size(), 0.5);
   scitbx::af::shared<int> grid_binary(256 * 256 * 256, 0);
   double cutoff = rmsd_cutoff * rmsd;
-  std::cout << "cutoff " << cutoff << std::endl;
+
   int count = 0;
   for (int i = 0; i < grid.size(); i++) {
     if (grid[i] >= cutoff) {
@@ -163,7 +163,7 @@ void do_floodfill(scitbx::af::shared<double> grid,
       count++;
     }
   }
-  std::cout << "count " << count << std::endl;
+
   // now do flood fill
   int n_voids = 0;
 
@@ -174,6 +174,9 @@ void do_floodfill(scitbx::af::shared<double> grid,
   std::vector<int> grid_points_per_void;
   int accumulator_index = 0;
   int total = n_points * n_points * n_points;
+  int n_sq = n_points * n_points;
+  int n_sq_minus_n = n_points * (n_points - 1);
+  int nn_sq_minus_n = n_points * n_points * (n_points - 1);
 
   for (int i = 0; i < grid_binary.size(); i++) {
     if (grid_binary[i] == target) {
@@ -186,24 +189,50 @@ void do_floodfill(scitbx::af::shared<double> grid,
       while (!stack.empty()) {
         int index = stack.top();
         stack.pop();
-        this_accumulator.push_back(index);
+        accumulators[accumulator_index].push_back(index);
         grid_points_per_void[accumulator_index]++;
-        std::vector<int> strides = {1, n_points, n_points * n_points};
-        for (int j = 0; j < 3; j++) {
-          int stride = strides[j];
-          int x_plus = index + stride;
-          if (x_plus < total) {
-            if (grid_binary[x_plus] == target) {
-              grid_binary[x_plus] = replacement;
-              stack.push(x_plus);
-            }
+        // when finding nearest neighbours, need to check we don't step over the edge in
+        // each dimension likely not very efficient right now!
+        if ((index + 1) % n_points != 0) {
+          int x_plus = index + 1;
+          if (grid_binary[x_plus] == target) {
+            grid_binary[x_plus] = replacement;
+            stack.push(x_plus);
           }
-          int x_minus = index - stride;
-          if (x_minus >= 0) {
-            if (grid_binary[x_minus] == target) {
-              grid_binary[x_minus] = replacement;
-              stack.push(x_minus);
-            }
+        }
+        if (index % n_points != 0) {
+          int x_minus = index - 1;
+          if (grid_binary[x_minus] == target) {
+            grid_binary[x_minus] = replacement;
+            stack.push(x_minus);
+          }
+        }
+        if ((index % n_sq) < n_sq_minus_n) {
+          int y_plus = index + n_points;
+          if (grid_binary[y_plus] == target) {
+            grid_binary[y_plus] = replacement;
+            stack.push(y_plus);
+          }
+        }
+        if ((index % n_sq) >= n_points) {
+          int y_minus = index - n_points;
+          if (grid_binary[y_minus] == target) {
+            grid_binary[y_minus] = replacement;
+            stack.push(y_minus);
+          }
+        }
+        if ((index % total) < nn_sq_minus_n) {
+          int z_plus = index + n_sq;
+          if (grid_binary[z_plus] == target) {
+            grid_binary[z_plus] = replacement;
+            stack.push(z_plus);
+          }
+        }
+        if ((index % total) >= n_sq) {
+          int z_minus = index - n_sq;
+          if (grid_binary[z_minus] == target) {
+            grid_binary[z_minus] = replacement;
+            stack.push(z_minus);
           }
         }
       }
@@ -212,9 +241,47 @@ void do_floodfill(scitbx::af::shared<double> grid,
     }
   }
 
-  std::cout << "n voids " << grid_points_per_void.size() << std::endl;
+  // DIALS_ASSERT(n_voids > 3)
 
   // want centres_of_mass_frac and grid_points_per_void
+  // now calc centres of mass.
+  scitbx::af::shared<scitbx::vec3<double>> centres_of_mass_frac(
+    (scitbx::af::reserve(n_voids)));
+  for (int i = 0; i < accumulators.size(); i++) {
+    std::vector<int> values = accumulators[i];
+    int n = values.size();
+    int divisor = n * n_points;
+    double x = 0.0;
+    double y = 0.0;
+    double z = 0.0;
+    for (int j = 0; j < n; j++) {
+      x += (values[j] % n_points);
+      y += ((values[j] % n_sq) / n_points);
+      z += (values[j] / n_sq);
+    }
+    x /= divisor;
+    y /= divisor;
+    z /= divisor;
+    centres_of_mass_frac[i] = {y, z, x};
+    // std::cout << "com: " << y << " " << z << " " << x << " npoints: " <<
+    // grid_points_per_void[i] << std::endl;
+  }
+
+  // now filter out based on iqr range and peak_volume_cutoff
+  std::sort(grid_points_per_void.begin(), grid_points_per_void.end());
+  int Q3_index = grid_points_per_void.size() * 3 / 4;
+  int Q1_index = grid_points_per_void.size() / 4;
+  int iqr = grid_points_per_void[Q3_index] - grid_points_per_void[Q1_index];
+  int iqr_multiplier = 5;
+  int cut = (iqr * iqr_multiplier) + grid_points_per_void[Q3_index];
+  while (grid_points_per_void[grid_points_per_void.size() - 1] > cut) {
+    grid_points_per_void.pop_back();
+  }
+  int max_val = grid_points_per_void[grid_points_per_void.size() - 1];
+  int peak_cutoff = (int)(peak_volume_cutoff * max_val);
+  while (grid_points_per_void[0] <= peak_cutoff) {
+    grid_points_per_void.erase(grid_points_per_void.begin());
+  }
 }
 
 scitbx::af::shared<double> do_fft3d(
@@ -254,6 +321,6 @@ scitbx::af::shared<double> do_fft3d(
     real_out[i] = std::pow(data_out[i].real(), 2);
   }
 
-  do_floodfill(real_out, d_min);
+  do_floodfill(real_out);
   return real_out;
 }

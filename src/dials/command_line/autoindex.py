@@ -33,19 +33,13 @@ def _find_peaks(
     grid_real_binary.set_selected(grid_real_binary < (rmsd_cutoff) * rmsd, 0)
     grid_real_binary.as_1d().set_selected(grid_real_binary.as_1d() > 0, 1)
     grid_real_binary = grid_real_binary.iround()
-    print((grid_real_binary.as_1d() == 0).count(True))
-    print((grid_real_binary.as_1d() > 0).count(True))
-    # print(list(grid_real_binary))
     from cctbx import masks
 
-    print(f"cutoff  {rmsd_cutoff * rmsd}")
     # real space FFT grid dimensions
     cell_lengths = [n_points * d_min / 2 for i in range(3)]
     fft_cell = uctbx.unit_cell(cell_lengths + [90] * 3)
-    print(fft_cell)
     flood_fill = masks.flood_fill(grid_real_binary, fft_cell)
-    print(flood_fill.n_voids())
-    assert 0
+
     if flood_fill.n_voids() < 4:
         # Require at least peak at origin and one peak for each basis vector
         raise RuntimeError(
@@ -71,6 +65,7 @@ def _find_peaks(
 
     sites = flood_fill.centres_of_mass_frac().select(isel)
     volumes = flood_fill.grid_points_per_void().select(isel)
+
     return sites, volumes, fft_cell
 
 
@@ -115,6 +110,7 @@ def fft3d(rlp, d_min):
     grid_transformed = fft.forward(grid_complex)
     grid_real = flex.pow2(flex.real(grid_transformed))
     del grid_transformed
+    sites, volumes, fft_cell = _find_peaks(grid_real, d_min)
     return grid_real, used_in_indexing
 
 
@@ -317,9 +313,6 @@ def check_fft_equivalence(res_cpp, res_main):
             print(r1, r2, i)
             assert 0
 
-
-print(type(res_cpp))
-# do_floodfill(res_cpp, d_min=1.8)
 
 # check_fft_equivalence(res_cpp, res_main)
 
