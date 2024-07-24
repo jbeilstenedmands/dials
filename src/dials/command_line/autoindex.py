@@ -110,7 +110,6 @@ def fft3d(rlp, d_min):
     grid_transformed = fft.forward(grid_complex)
     grid_real = flex.pow2(flex.real(grid_transformed))
     del grid_transformed
-    sites, volumes, fft_cell = _find_peaks(grid_real, d_min)
     return grid_real, used_in_indexing
 
 
@@ -139,7 +138,7 @@ def sites_to_vecs(sites, volumes, fft_cell, min_cell=3, max_cell=92.3):
     vectors = vectors.select(sel)
     vectors = [matrix.col(v) for v in vectors]
     volumes = volumes.select(sel)
-
+    norms = norms.select(sel)
     vector_groups = group_vectors(vectors, volumes)
     vectors = [g.mean for g in vector_groups]
     volumes = flex.double(max(g.weights) for g in vector_groups)
