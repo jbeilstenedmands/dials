@@ -12,6 +12,7 @@
 #include <boost/python/def.hpp>
 #include <dials/algorithms/indexing/index.h>
 #include <dials/algorithms/indexing/fastindex.h>
+#include <dials/algorithms/indexing/xyz_to_rlp.h>
 
 namespace dials { namespace algorithms { namespace boost_python {
 

@@ -284,8 +284,19 @@ def run_cpp_version():
             n[2] + origin[2],
         )
     )
+    osc_start, osc_width = expt.scan.get_oscillation()
+    image_range_start = expt.scan.get_image_range()[0]
     rlp = xyz_to_rlp_cpp(
-        xyzobs_px, matrix.sqr(expt.goniometer.get_fixed_rotation()), d_
+        xyzobs_px,
+        matrix.sqr(expt.goniometer.get_fixed_rotation()),
+        d_,
+        expt.beam.get_wavelength(),
+        expt.detector[i_panel].get_pixel_size()[0],
+        image_range_start,
+        osc_start,
+        osc_width,
+        expt.goniometer.get_rotation_axis(),
+        expt.goniometer.get_setting_rotation(),
     )
     end = time.time()
     print(f"Time for xyz to rlp: {(end - st):.6f}")
