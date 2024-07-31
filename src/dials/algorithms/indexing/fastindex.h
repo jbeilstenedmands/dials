@@ -10,10 +10,14 @@
 #include <stack>
 #include <algorithm>
 #include <chrono>
+#include <tuple>
+#include <boost/python.hpp>
+#include <boost/python/def.hpp>
 
 using namespace pocketfft;
 
-std::vector<std::complex<double>> map_centroids_to_reciprocal_space_grid_cpp(
+std::tuple<std::vector<std::complex<double>>, scitbx::af::shared<bool>>
+map_centroids_to_reciprocal_space_grid_cpp(
   af::const_ref<scitbx::vec3<double>> const& reciprocal_space_vectors,
   double d_min,
   double b_iso = 0) {
@@ -21,6 +25,7 @@ std::vector<std::complex<double>> map_centroids_to_reciprocal_space_grid_cpp(
   const double rlgrid = 2 / (d_min * n_points);
   const double one_over_rlgrid = 1 / rlgrid;
   const int half_n_points = n_points / 2;
+  scitbx::af::shared<bool> selection(reciprocal_space_vectors.size(), true);
 
   std::vector<std::complex<double>> data_in(256 * 256 * 256);
   for (int i = 0; i < reciprocal_space_vectors.size(); i++) {
@@ -28,7 +33,7 @@ std::vector<std::complex<double>> map_centroids_to_reciprocal_space_grid_cpp(
     const double v_length = v.length();
     const double d_spacing = 1 / v_length;
     if (d_spacing < d_min) {
-      // selection[i] = false;
+      selection[i] = false;
       continue;
     }
     scitbx::vec3<int> coord;
@@ -36,7 +41,7 @@ std::vector<std::complex<double>> map_centroids_to_reciprocal_space_grid_cpp(
       coord[j] = scitbx::math::iround(v[j] * one_over_rlgrid) + half_n_points;
     }
     if ((coord.max() >= n_points) || coord.min() < 0) {
-      // selection[i] = false;
+      selection[i] = false;
       continue;
     }
     double T;
@@ -48,7 +53,7 @@ std::vector<std::complex<double>> map_centroids_to_reciprocal_space_grid_cpp(
     size_t index = coord[2] + (256 * coord[1]) + (256 * 256 * coord[0]);
     data_in[index] = {T, 0.0};
   }
-  return data_in;
+  return std::make_tuple(data_in, selection);
 }
 
 class VectorGroup {
@@ -124,11 +129,12 @@ bool is_approximate_integer_multiple(scitbx::vec3<double> v1,
   return false;
 }
 
-void sites_to_vecs(scitbx::af::shared<scitbx::vec3<double>> centres_of_mass_frac,
-                   std::vector<int> grid_points_per_void,
-                   double d_min,
-                   double min_cell = 3.0,
-                   double max_cell = 92.3) {
+scitbx::af::shared<scitbx::vec3<double>> sites_to_vecs(
+  scitbx::af::shared<scitbx::vec3<double>> centres_of_mass_frac,
+  std::vector<int> grid_points_per_void,
+  double d_min,
+  double min_cell = 3.0,
+  double max_cell = 92.3) {
   auto start = std::chrono::system_clock::now();
   int n_points = 256;
   double fft_cell_length = n_points * d_min / 2.0;
@@ -226,7 +232,7 @@ void sites_to_vecs(scitbx::af::shared<scitbx::vec3<double>> centres_of_mass_frac
   }
   // now sort by peak volume again
   std::sort(unique_sites.begin(), unique_sites.end(), compare_site_data_volume);
-  std::vector<scitbx::vec3<double>> unique_vectors_sorted;
+  scitbx::af::shared<scitbx::vec3<double>> unique_vectors_sorted;
   for (int i = 0; i < unique_sites.size(); i++) {
     unique_vectors_sorted.push_back(unique_sites[i].site);
   }
@@ -235,12 +241,13 @@ void sites_to_vecs(scitbx::af::shared<scitbx::vec3<double>> centres_of_mass_frac
   std::chrono::duration<double> elapsed_seconds = end - start;
   std::cout << "elapsed time for sites_to_vecs: " << elapsed_seconds.count() << "s"
             << std::endl;
+  return unique_vectors_sorted;
 }
 
-void do_floodfill(scitbx::af::shared<double> grid,
-                  double rmsd_cutoff = 15.0,
-                  double peak_volume_cutoff = 0.15,
-                  double d_min = 1.8) {
+scitbx::af::shared<scitbx::vec3<double>> do_floodfill(scitbx::af::shared<double> grid,
+                                                      double rmsd_cutoff = 15.0,
+                                                      double peak_volume_cutoff = 0.15,
+                                                      double d_min = 1.8) {
   auto start = std::chrono::system_clock::now();
   int n_points = 256;
   // double fft_cell_length = n_points * d_min / 2;
@@ -362,8 +369,6 @@ void do_floodfill(scitbx::af::shared<double> grid,
     y /= divisor;
     z /= divisor;
     centres_of_mass_frac[i] = {z, y, x};
-    // std::cout << "com: " << y << " " << z << " " << x << " npoints: " <<
-    // grid_points_per_void[i] << std::endl;
   }
 
   // now filter out based on iqr range and peak_volume_cutoff
@@ -396,15 +401,23 @@ void do_floodfill(scitbx::af::shared<double> grid,
   std::chrono::duration<double> elapsed_seconds = end - start;
   std::cout << "elapsed time for flood_fill: " << elapsed_seconds.count() << "s"
             << std::endl;
-  sites_to_vecs(centres_of_mass_frac, grid_points_per_void_unsorted, d_min);
+  // for (int i=0;i<centres_of_mass_frac.size();i++){
+  //   std::cout << centres_of_mass_frac[i][0] << " " << centres_of_mass_frac[i][1] << "
+  //   " << centres_of_mass_frac[i][2] << " " << std::endl;
+  // }
+  scitbx::af::shared<scitbx::vec3<double>> sites =
+    sites_to_vecs(centres_of_mass_frac, grid_points_per_void_unsorted, d_min);
+  return sites;
 }
 
-scitbx::af::shared<double> do_fft3d(
+std::tuple<scitbx::af::shared<double>, scitbx::af::shared<bool>> do_fft3d(
   af::const_ref<scitbx::vec3<double>> const& reciprocal_space_vectors,
   double d_min,
   double b_iso = 0) {
   auto start = std::chrono::system_clock::now();
-  std::vector<std::complex<double>> complex_data_in =
+  std::vector<std::complex<double>> complex_data_in;
+  scitbx::af::shared<bool> used_in_indexing;
+  std::tie(complex_data_in, used_in_indexing) =
     map_centroids_to_reciprocal_space_grid_cpp(reciprocal_space_vectors, d_min, b_iso);
 
   shape_t shape_in{256, 256, 256};
@@ -440,6 +453,18 @@ scitbx::af::shared<double> do_fft3d(
   std::chrono::duration<double> elapsed_seconds = end - start;
   std::cout << "elapsed time for fft3d (pocketfft): " << elapsed_seconds.count() << "s"
             << std::endl;
-  do_floodfill(real_out, 15.0, 0.15, d_min);
-  return real_out;
+  return std::make_tuple(real_out, used_in_indexing);
+}
+
+boost::python::tuple indexing_algorithm(
+  af::const_ref<scitbx::vec3<double>> const& reciprocal_space_vectors,
+  double d_min,
+  double b_iso = 0) {
+  scitbx::af::shared<double> real_fft;
+  scitbx::af::shared<bool> used_in_indexing;
+  std::tie(real_fft, used_in_indexing) =
+    do_fft3d(reciprocal_space_vectors, d_min, b_iso);
+  scitbx::af::shared<scitbx::vec3<double>> candidate_vecs =
+    do_floodfill(real_fft, 15.0, 0.15, d_min);
+  return boost::python::make_tuple(candidate_vecs, used_in_indexing);
 }

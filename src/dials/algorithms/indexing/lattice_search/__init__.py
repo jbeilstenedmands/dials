@@ -344,12 +344,20 @@ class BasisVectorSearch(LatticeSearch):
         return self.candidate_basis_vectors
 
     def find_candidate_crystal_models(self):
+        import time
+
+        st = time.time()
         self.find_candidate_basis_vectors()
+        end = time.time()
+        print(f"{end-st}s for candidate basis vectors")
         if self.params.optimise_initial_basis_vectors:
             self.optimise_basis_vectors()
+        st = time.time()
         candidate_crystal_models = self.find_candidate_orientation_matrices(
             self.candidate_basis_vectors
         )
+        end = time.time()
+        print(f"{end-st}s for candidate crystal models")
         return candidate_crystal_models
 
     def find_candidate_orientation_matrices(self, candidate_basis_vectors):

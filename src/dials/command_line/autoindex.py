@@ -16,7 +16,7 @@ from dials.algorithms.indexing.basis_vector_search.utils import (
     is_approximate_integer_multiple,
 )
 from dials_algorithms_indexing_ext import (  # , map_centroids_to_reciprocal_space_grid_cpp
-    do_fft3d,
+    indexing_algorithm,
 )
 from dials_algorithms_indexing_ext import xyz_to_rlp as xyz_to_rlp_cpp
 
@@ -75,8 +75,7 @@ import dials_algorithms_indexing_ext
 
 def do_cpp_fft3d(rlp, d_min):
     b_iso = -4 * d_min**2 * math.log(0.05)
-    used_in_indexing = flex.bool(rlp.size(), True)
-    return do_fft3d(rlp, d_min, b_iso)
+    return indexing_algorithm(rlp, d_min, b_iso)
 
 
 def fft3d(rlp, d_min):
@@ -302,21 +301,23 @@ def run_cpp_version():
         expt.goniometer.get_rotation_axis(),
         expt.goniometer.get_setting_rotation(),
     )
-    end = time.time()
+    # end = time.time()
     # print(f"Time for xyz to rlp: {(end - st):.6f}")
 
-    st = time.time()
-    res = do_cpp_fft3d(rlp, d_min=1.8)
+    # st = time.time()
+    res, used = do_cpp_fft3d(rlp, d_min=1.8)
+    # print(list(used))
+    # print(list(res))
     end = time.time()
-    # print(f"Time for fft3d: {(end - st):.6f}")
-    return res, rlp
+    print(f"Total time for cpp indexing algorithm: {(end - st):.6f}")
+    return res, rlp, used
 
 
 print("running cpp version")
-res_cpp, rlp = run_cpp_version()
+res_cpp, rlp, used1 = run_cpp_version()
 
 print("running main version")
-res_main, used, rlp2 = run_main_version()
+res_main, used2, rlp2 = run_main_version()
 
 
 def check_fft_equivalence(res_cpp, res_main):
