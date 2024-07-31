@@ -4,6 +4,7 @@
 #include <scitbx/constants.h>
 #include <dials/array_family/scitbx_shared_and_versa.h>
 #include <eigen3/Eigen/Dense>
+#include <chrono>
 
 using Eigen::Matrix3d;
 using Eigen::Vector3d;
@@ -84,6 +85,7 @@ scitbx::af::shared<scitbx::vec3<double>> xyz_to_rlp(
   double osc_width,
   scitbx::vec3<double> rotation_axis,
   scitbx::mat3<double> setting_rotation) {
+  auto start = std::chrono::system_clock::now();
   // An equivalent to dials flex_ext.map_centroids_to_reciprocal_space method
   SimpleBeam beam(wavelength);
   SimpleDetector detector(detector_d_matrix, pixel_size_mm);
@@ -124,5 +126,10 @@ scitbx::af::shared<scitbx::vec3<double>> xyz_to_rlp(
     rlp_this = gonio.sample_rotation_inverse * rlp_this;
     rlp[i] = {rlp_this[0], rlp_this[1], rlp_this[2]};
   }
+
+  auto end = std::chrono::system_clock::now();
+  std::chrono::duration<double> elapsed_seconds = end - start;
+  std::cout << "elapsed time for xyz_to_rlp: " << elapsed_seconds.count() << "s"
+            << std::endl;
   return rlp;
 }

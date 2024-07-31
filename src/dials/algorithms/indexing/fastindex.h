@@ -9,6 +9,7 @@
 #include <map>
 #include <stack>
 #include <algorithm>
+#include <chrono>
 
 using namespace pocketfft;
 
@@ -128,9 +129,9 @@ void sites_to_vecs(scitbx::af::shared<scitbx::vec3<double>> centres_of_mass_frac
                    double d_min,
                    double min_cell = 3.0,
                    double max_cell = 92.3) {
+  auto start = std::chrono::system_clock::now();
   int n_points = 256;
   double fft_cell_length = n_points * d_min / 2.0;
-  std::cout << "in sites to vecs " << centres_of_mass_frac.size() << std::endl;
   // sites_mod_short and convert to cartesian
   for (int i = 0; i < centres_of_mass_frac.size(); i++) {
     for (size_t j = 0; j < 3; j++) {
@@ -188,7 +189,6 @@ void sites_to_vecs(scitbx::af::shared<scitbx::vec3<double>> centres_of_mass_frac
       vector_groups.push_back(group);
     }
   }
-  std::cout << "n vec groups " << vector_groups.size() << std::endl;
   std::vector<SiteData> grouped_data;
   for (int i = 0; i < vector_groups.size(); i++) {
     scitbx::vec3<double> site = vector_groups[i].mean();
@@ -208,7 +208,7 @@ void sites_to_vecs(scitbx::af::shared<scitbx::vec3<double>> centres_of_mass_frac
     for (int j = 0; j < unique_vectors.size(); j++) {
       if (unique_volumes[j] > grouped_data[i].volume) {
         if (is_approximate_integer_multiple(unique_vectors[j], v)) {
-          std::cout << "rejecting " << vector_length(v) << ": is integer multiple of"
+          std::cout << "rejecting " << vector_length(v) << ": is integer multiple of "
                     << vector_length(unique_vectors[j]) << std::endl;
           is_unique = false;
           break;
@@ -221,11 +221,17 @@ void sites_to_vecs(scitbx::af::shared<scitbx::vec3<double>> centres_of_mass_frac
       unique_volumes.push_back(grouped_data[i].volume);
     }
   }
+  auto end = std::chrono::system_clock::now();
+  std::chrono::duration<double> elapsed_seconds = end - start;
+  std::cout << "elapsed time for sites_to_vecs: " << elapsed_seconds.count() << "s"
+            << std::endl;
 }
 
 void do_floodfill(scitbx::af::shared<double> grid,
                   double rmsd_cutoff = 15.0,
-                  double peak_volume_cutoff = 0.15) {
+                  double peak_volume_cutoff = 0.15,
+                  double d_min = 1.8) {
+  auto start = std::chrono::system_clock::now();
   int n_points = 256;
   // double fft_cell_length = n_points * d_min / 2;
   // first calc rmsd and use this to create a binary grid
@@ -351,7 +357,6 @@ void do_floodfill(scitbx::af::shared<double> grid,
   }
 
   // now filter out based on iqr range and peak_volume_cutoff
-  std::cout << "now filtering" << std::endl;
   std::vector<int> grid_points_per_void_unsorted(grid_points_per_void);
   std::sort(grid_points_per_void.begin(), grid_points_per_void.end());
   int Q3_index = grid_points_per_void.size() * 3 / 4;
@@ -359,38 +364,36 @@ void do_floodfill(scitbx::af::shared<double> grid,
   int iqr = grid_points_per_void[Q3_index] - grid_points_per_void[Q1_index];
   int iqr_multiplier = 5;
   int cut = (iqr * iqr_multiplier) + grid_points_per_void[Q3_index];
-
-  for (int i = grid_points_per_void.size() - 1; i >= 0; i--) {
+  /*for (int i = grid_points_per_void.size() - 1; i >= 0; i--) {
     if (grid_points_per_void_unsorted[i] > cut) {
       grid_points_per_void_unsorted.erase(grid_points_per_void_unsorted.begin() + i);
       centres_of_mass_frac.erase(centres_of_mass_frac.begin() + i);
     }
-  }
+  }*/
   while (grid_points_per_void[grid_points_per_void.size() - 1] > cut) {
     grid_points_per_void.pop_back();
   }
   int max_val = grid_points_per_void[grid_points_per_void.size() - 1];
 
   int peak_cutoff = (int)(peak_volume_cutoff * max_val);
-
   for (int i = grid_points_per_void_unsorted.size() - 1; i >= 0; i--) {
     if (grid_points_per_void_unsorted[i] <= peak_cutoff) {
       grid_points_per_void_unsorted.erase(grid_points_per_void_unsorted.begin() + i);
       centres_of_mass_frac.erase(centres_of_mass_frac.begin() + i);
     }
   }
-  // while (grid_points_per_void[0] <= peak_cutoff) {
-  //   grid_points_per_void.erase(grid_points_per_void.begin());
-  // }
-  std::cout << centres_of_mass_frac.size() << std::endl;
-  std::cout << grid_points_per_void_unsorted.size() << std::endl;
-  sites_to_vecs(centres_of_mass_frac, grid_points_per_void_unsorted, 1.8);
+  auto end = std::chrono::system_clock::now();
+  std::chrono::duration<double> elapsed_seconds = end - start;
+  std::cout << "elapsed time for flood_fill: " << elapsed_seconds.count() << "s"
+            << std::endl;
+  sites_to_vecs(centres_of_mass_frac, grid_points_per_void_unsorted, d_min);
 }
 
 scitbx::af::shared<double> do_fft3d(
   af::const_ref<scitbx::vec3<double>> const& reciprocal_space_vectors,
   double d_min,
   double b_iso = 0) {
+  auto start = std::chrono::system_clock::now();
   std::vector<std::complex<double>> complex_data_in =
     map_centroids_to_reciprocal_space_grid_cpp(reciprocal_space_vectors, d_min, b_iso);
 
@@ -423,7 +426,10 @@ scitbx::af::shared<double> do_fft3d(
   for (int i = 0; i < real_out.size(); ++i) {
     real_out[i] = std::pow(data_out[i].real(), 2);
   }
-
-  do_floodfill(real_out);
+  auto end = std::chrono::system_clock::now();
+  std::chrono::duration<double> elapsed_seconds = end - start;
+  std::cout << "elapsed time for fft3d (pocketfft): " << elapsed_seconds.count() << "s"
+            << std::endl;
+  do_floodfill(real_out, 15.0, 0.15, d_min);
   return real_out;
 }

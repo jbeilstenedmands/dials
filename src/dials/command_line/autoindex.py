@@ -57,7 +57,6 @@ def _find_peaks(
     iqr_x = q3_x - q1_x
     cut_x = iqr_multiplier * iqr_x
     outliers.set_selected(grid_points_per_void.as_double() > (q3_x + cut_x), True)
-    # print q3_x + cut_x, outliers.count(True)
     isel = (
         grid_points_per_void
         > int(peak_volume_cutoff * flex.max(grid_points_per_void.select(~outliers)))
@@ -114,8 +113,14 @@ def fft3d(rlp, d_min):
 
 
 def candidate_basis_vecs_from_grid(grid_real, d_min):
+    st = time.time()
     sites, volumes, fft_cell = _find_peaks(grid_real, d_min)
+    end = time.time()
+    print(f"Time for flood fill: {(end - st):.6f}")
+    st = time.time()
     candidate_basis_vectors = sites_to_vecs(sites, volumes, fft_cell)
+    end = time.time()
+    print(f"Time for sites_to_vecs: {(end - st):.6f}")
     return candidate_basis_vectors
 
 
@@ -193,12 +198,11 @@ def xyz_to_rlp(xyzobs_px, expt):
     # from flex_ext, map_centroids_to_reciprocal_space
     from cctbx.array_family import flex
 
-    pixel_size = 0.172
-    image_range_start = 1
-    osc_start = 0
-    osc_width = 0.5
+    pixel_size = expt.detector[0].get_pixel_size()[0]
+    osc_start, osc_width = expt.scan.get_oscillation()
+    image_range_start = expt.scan.get_image_range()[0]
     i_panel = 0
-    wavelength = 1.23985
+    wavelength = expt.beam.get_wavelength()
     s0 = (0, 0, -1.0 / wavelength)
 
     setting_rotation = matrix.sqr(expt.goniometer.get_setting_rotation())
@@ -260,7 +264,7 @@ def run_main_version():
     res, used = fft3d(rlp, d_min=1.8)
     end = time.time()
     print(f"Time for fft3d: {(end - st):.6f}")
-    return res, used
+    return res, used, rlp
 
 
 def run_cpp_version():
@@ -299,20 +303,20 @@ def run_cpp_version():
         expt.goniometer.get_setting_rotation(),
     )
     end = time.time()
-    print(f"Time for xyz to rlp: {(end - st):.6f}")
+    # print(f"Time for xyz to rlp: {(end - st):.6f}")
 
     st = time.time()
     res = do_cpp_fft3d(rlp, d_min=1.8)
     end = time.time()
-    print(f"Time for fft3d: {(end - st):.6f}")
-    return res
+    # print(f"Time for fft3d: {(end - st):.6f}")
+    return res, rlp
 
-
-print("running main version")
-res_main, used = run_main_version()
 
 print("running cpp version")
-res_cpp = run_cpp_version()
+res_cpp, rlp = run_cpp_version()
+
+print("running main version")
+res_main, used, rlp2 = run_main_version()
 
 
 def check_fft_equivalence(res_cpp, res_main):
@@ -337,13 +341,16 @@ else:
 st = time.time()
 candidate_basis_vecs_from_grid(grid_real, d_min=1.8)
 end = time.time()
-print(f"Time for finding candidate basis vecs: {(end - st):.6f}")
+# print(f"Time for finding candidate basis vecs: {(end - st):.6f}")
 
 # end
 def check_rlp_equivalence(rlp, rlp2):
-    for r1, r2 in zip(rlp, rlp2):
+    for j, (r1, r2) in enumerate(zip(rlp, rlp2)):
         for i in range(0, 3):
-            assert abs(r1[i] - r2[i]) < 1e-6, f"{r1[i]}, {r2[i]}"
+            assert abs(r1[i] - r2[i]) < 1e-6, f"{j}, {r1[i]}, {r2[i]}"
+
+
+# check_rlp_equivalence(rlp, rlp2)
 
 
 def test_gridding_equivalence():
