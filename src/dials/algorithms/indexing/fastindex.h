@@ -200,16 +200,17 @@ void sites_to_vecs(scitbx::af::shared<scitbx::vec3<double>> centres_of_mass_frac
   std::sort(grouped_data.begin(), grouped_data.end(), compare_site_data_volume);
   std::sort(grouped_data.begin(), grouped_data.end(), compare_site_data);
 
-  scitbx::af::shared<scitbx::vec3<double>> unique_vectors;
-  std::vector<int> unique_volumes;
+  // scitbx::af::shared<scitbx::vec3<double>> unique_vectors;
+  // std::vector<int> unique_volumes;
+  std::vector<SiteData> unique_sites;
   for (int i = 0; i < grouped_data.size(); i++) {
     bool is_unique = true;
     scitbx::vec3<double> v = grouped_data[i].site;
-    for (int j = 0; j < unique_vectors.size(); j++) {
-      if (unique_volumes[j] > grouped_data[i].volume) {
-        if (is_approximate_integer_multiple(unique_vectors[j], v)) {
+    for (int j = 0; j < unique_sites.size(); j++) {
+      if (unique_sites[j].volume > grouped_data[i].volume) {
+        if (is_approximate_integer_multiple(unique_sites[j].site, v)) {
           std::cout << "rejecting " << vector_length(v) << ": is integer multiple of "
-                    << vector_length(unique_vectors[j]) << std::endl;
+                    << vector_length(unique_sites[j].site) << std::endl;
           is_unique = false;
           break;
         }
@@ -217,10 +218,19 @@ void sites_to_vecs(scitbx::af::shared<scitbx::vec3<double>> centres_of_mass_frac
     }
     if (is_unique) {
       // std::cout << v[0] << " " << v[1] << " " << v[2] << std::endl;
-      unique_vectors.push_back(v);
-      unique_volumes.push_back(grouped_data[i].volume);
+      // unique_vectors.push_back(v);
+      // unique_volumes.push_back(grouped_data[i].volume);
+      SiteData site{v, 1.0, grouped_data[i].volume};
+      unique_sites.push_back(site);
     }
   }
+  // now sort by peak volume again
+  std::sort(unique_sites.begin(), unique_sites.end(), compare_site_data_volume);
+  std::vector<scitbx::vec3<double>> unique_vectors_sorted;
+  for (int i = 0; i < unique_sites.size(); i++) {
+    unique_vectors_sorted.push_back(unique_sites[i].site);
+  }
+
   auto end = std::chrono::system_clock::now();
   std::chrono::duration<double> elapsed_seconds = end - start;
   std::cout << "elapsed time for sites_to_vecs: " << elapsed_seconds.count() << "s"
