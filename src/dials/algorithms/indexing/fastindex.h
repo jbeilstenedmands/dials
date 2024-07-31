@@ -1,9 +1,6 @@
 #include <scitbx/array_family/flex_types.h>
 #include <scitbx/vec3.h>
 #include <scitbx/mat3.h>
-#include <scitbx/math/utils.h>
-#include <cctbx/miller.h>
-#include <scitbx/constants.h>
 #include <dials/array_family/scitbx_shared_and_versa.h>
 #include "gemmi/third_party/pocketfft_hdronly.h"
 #include <map>
@@ -13,6 +10,10 @@
 #include <tuple>
 #include <boost/python.hpp>
 #include <boost/python/def.hpp>
+#include <math.h>
+
+#define _USE_MATH_DEFINES
+#include <cmath>
 
 using namespace pocketfft;
 
@@ -38,7 +39,7 @@ map_centroids_to_reciprocal_space_grid_cpp(
     }
     scitbx::vec3<int> coord;
     for (int j = 0; j < 3; j++) {
-      coord[j] = scitbx::math::iround(v[j] * one_over_rlgrid) + half_n_points;
+      coord[j] = ((int)round(v[j] * one_over_rlgrid)) + half_n_points;
     }
     if ((coord.max() >= n_points) || coord.min() < 0) {
       selection[i] = false;
@@ -106,7 +107,7 @@ double angle_between_vectors_degrees(scitbx::vec3<double> v1, scitbx::vec3<doubl
   if (std::abs(normdot + 1.0) < 1E-6) {
     return 180.0;
   }
-  double angle = std::acos(normdot) * 180.0 / scitbx::constants::pi;
+  double angle = std::acos(normdot) * 180.0 / M_PI;
   return angle;
 }
 
