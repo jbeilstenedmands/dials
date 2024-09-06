@@ -24,12 +24,18 @@ namespace dials { namespace algorithms { namespace boost_python {
   }
   /*void export_do_fft3d() {
     def("do_fft3d", &do_fft3d);
-  }
-  void export_do_floodfill() {
-    def("do_floodfill", &do_floodfill);
   }*/
+  void export_floodfill() {
+    def("flood_fill", &flood_fill_cpp);
+  }
   void export_do_indexing() {
     def("indexing_algorithm", &indexing_algorithm);
+  }
+  void export_fft3d_cpp() {
+    def("fft3d_cpp", &fft3d_cpp);
+  }
+  void export_fft3d_to_vecs_cpp() {
+    def("fft3d_to_vecs_cpp", &fft3d_to_vecs_cpp);
   }
 
   void export_assign_indices() {
@@ -73,6 +79,9 @@ namespace dials { namespace algorithms { namespace boost_python {
     export_xyz_to_rlp();
     export_assign_indices_local();
     export_do_indexing();
+    export_fft3d_cpp();
+    export_fft3d_to_vecs_cpp();
+    export_floodfill();
   }
 
 }}}  // namespace dials::algorithms::boost_python

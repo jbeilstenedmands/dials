@@ -11,6 +11,7 @@
 #include <boost/python.hpp>
 #include <boost/python/def.hpp>
 #include <math.h>
+#include <dials/algorithms/indexing/floodfill.h>
 
 #define _USE_MATH_DEFINES
 #include <cmath>
@@ -294,6 +295,12 @@ scitbx::af::shared<scitbx::vec3<double>> do_floodfill(scitbx::af::shared<double>
       accumulators.push_back(this_accumulator);
       n_voids++;
       grid_points_per_void.push_back(0);
+      int x_plus = 0;
+      int x_minus = 0;
+      int y_plus = 0;
+      int y_minus = 0;
+      int z_plus = 0;
+      int z_minus = 0;
       while (!stack.empty()) {
         int index = stack.top();
         stack.pop();
@@ -302,53 +309,65 @@ scitbx::af::shared<scitbx::vec3<double>> do_floodfill(scitbx::af::shared<double>
         // when finding nearest neighbours, need to check we don't step over the edge in
         // each dimension likely not very efficient right now!
         if ((index + 1) % n_points != 0) {
-          int x_plus = index + 1;
-          if (grid_binary[x_plus] == target) {
-            grid_binary[x_plus] = replacement;
-            stack.push(x_plus);
-          }
+          x_plus = index + 1;
+        } else {
+          x_plus = index + 1 - n_points;
+        }
+        if (grid_binary[x_plus] == target) {
+          grid_binary[x_plus] = replacement;
+          stack.push(x_plus);
         }
         if (index % n_points != 0) {
-          int x_minus = index - 1;
-          if (grid_binary[x_minus] == target) {
-            grid_binary[x_minus] = replacement;
-            stack.push(x_minus);
-          }
+          x_minus = index - 1;
+        } else {
+          x_minus = index - 1 + n_points;
+        }
+        if (grid_binary[x_minus] == target) {
+          grid_binary[x_minus] = replacement;
+          stack.push(x_minus);
         }
         if ((index % n_sq) < n_sq_minus_n) {
-          int y_plus = index + n_points;
-          if (grid_binary[y_plus] == target) {
-            grid_binary[y_plus] = replacement;
-            stack.push(y_plus);
-          }
+          y_plus = index + n_points;
+        } else {
+          y_plus = index + n_points - n_sq;
+        }
+        if (grid_binary[y_plus] == target) {
+          grid_binary[y_plus] = replacement;
+          stack.push(y_plus);
         }
         if ((index % n_sq) >= n_points) {
-          int y_minus = index - n_points;
-          if (grid_binary[y_minus] == target) {
-            grid_binary[y_minus] = replacement;
-            stack.push(y_minus);
-          }
+          y_minus = index - n_points;
+        } else {
+          y_minus = index - n_points + n_sq;
+        }
+        if (grid_binary[y_minus] == target) {
+          grid_binary[y_minus] = replacement;
+          stack.push(y_minus);
         }
         if ((index % total) < nn_sq_minus_n) {
-          int z_plus = index + n_sq;
-          if (grid_binary[z_plus] == target) {
-            grid_binary[z_plus] = replacement;
-            stack.push(z_plus);
-          }
+          z_plus = index + n_sq;
+        } else {
+          z_plus = index + n_sq - total;
+        }
+        if (grid_binary[z_plus] == target) {
+          grid_binary[z_plus] = replacement;
+          stack.push(z_plus);
         }
         if ((index % total) >= n_sq) {
-          int z_minus = index - n_sq;
-          if (grid_binary[z_minus] == target) {
-            grid_binary[z_minus] = replacement;
-            stack.push(z_minus);
-          }
+          z_minus = index - n_sq;
+        } else {
+          z_minus = index - n_sq + total;
+        }
+        if (grid_binary[z_minus] == target) {
+          grid_binary[z_minus] = replacement;
+          stack.push(z_minus);
         }
       }
       replacement++;
       accumulator_index++;
     }
   }
-
+  std::cout << "n voids cpp " << n_voids << std::endl;
   // DIALS_ASSERT(n_voids > 3)
 
   // want centres_of_mass_frac and grid_points_per_void
@@ -468,4 +487,44 @@ boost::python::tuple indexing_algorithm(
   scitbx::af::shared<scitbx::vec3<double>> candidate_vecs =
     do_floodfill(real_fft, 15.0, 0.15, d_min);
   return boost::python::make_tuple(candidate_vecs, used_in_indexing);
+}
+
+// for testing
+boost::python::tuple fft3d_cpp(
+  af::const_ref<scitbx::vec3<double>> const& reciprocal_space_vectors,
+  double d_min,
+  double b_iso = 0) {
+  scitbx::af::shared<double> real_fft;
+  scitbx::af::shared<bool> used_in_indexing;
+  std::tie(real_fft, used_in_indexing) =
+    do_fft3d(reciprocal_space_vectors, d_min, b_iso);
+  return boost::python::make_tuple(real_fft, used_in_indexing);
+}
+
+scitbx::af::shared<scitbx::vec3<double>> fft3d_to_vecs_cpp(
+  scitbx::af::shared<double> real_fft,
+  double d_min) {
+  scitbx::af::shared<scitbx::vec3<double>> candidate_vecs =
+    do_floodfill(real_fft, 15.0, 0.15, d_min);
+  return candidate_vecs;
+}
+
+// wrap the function for testing
+boost::python::tuple flood_fill_cpp(scitbx::af::shared<double> grid,
+                                    double rmsd_cutoff = 15.0,
+                                    int n_points = 256) {
+  scitbx::af::shared<int> output_grid;
+  std::vector<int> grid_points_per_void;
+  scitbx::af::shared<scitbx::vec3<double>> centres_of_mass_frac;
+
+  std::tie(output_grid, grid_points_per_void, centres_of_mass_frac) =
+    flood_fill(grid, rmsd_cutoff, n_points);
+  // now copy to cctbx arrays
+  scitbx::af::shared<int> grid_points_per_void_cctbx(grid_points_per_void.size());
+  for (int i = 0; i < grid_points_per_void.size(); i++) {
+    grid_points_per_void_cctbx[i] = grid_points_per_void[i];
+  }
+
+  return boost::python::make_tuple(
+    output_grid, grid_points_per_void_cctbx, centres_of_mass_frac);
 }
