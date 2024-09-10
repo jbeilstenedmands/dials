@@ -14,6 +14,7 @@
 #define _USE_MATH_DEFINES
 #include <cmath>
 
+// Define a modulo function that returns python style modulo for negative numbers.
 int modulo(int i, int n) {
   return (i % n + n) % n;
 }
@@ -25,9 +26,7 @@ flood_fill(scitbx::af::shared<double> grid,
            double rmsd_cutoff = 15.0,
            int n_points = 256) {
   auto start = std::chrono::system_clock::now();
-  // int n_points = 256;
-  //  double fft_cell_length = n_points * d_min / 2;
-  //  first calc rmsd and use this to create a binary grid
+  //  First calc rmsd and use this to create a binary grid
   double sumg = 0.0;
   for (int i = 0; i < grid.size(); ++i) {
     sumg += grid[i];
@@ -40,16 +39,14 @@ flood_fill(scitbx::af::shared<double> grid,
   double rmsd = std::pow(sum_delta_sq / grid.size(), 0.5);
   scitbx::af::shared<int> grid_binary(n_points * n_points * n_points, 0);
   double cutoff = rmsd_cutoff * rmsd;
-
   for (int i = 0; i < grid.size(); i++) {
     if (grid[i] >= cutoff) {
       grid_binary[i] = 1;
     }
   }
 
-  // now do flood fill
+  // Now do flood fill. Wrap around the edge in all three dimensions.
   int n_voids = 0;
-
   std::stack<scitbx::vec3<int>> stack;
   std::vector<std::vector<scitbx::vec3<int>>> accumulators;
   int target = 1;
@@ -63,7 +60,8 @@ flood_fill(scitbx::af::shared<double> grid,
 
   for (int i = 0; i < grid_binary.size(); i++) {
     if (grid_binary[i] == target) {
-      // std::cout << i << std::endl;
+      // Convert the array index into xyz coordinates.
+      // Store xyz coordinates on the stack, but index the array with 1D index.
       int x = i % n_points;
       int y = (i % n_sq) / n_points;
       int z = i / n_sq;
@@ -80,26 +78,15 @@ flood_fill(scitbx::af::shared<double> grid,
         stack.pop();
         accumulators[accumulator_index].push_back(this_xyz);
         grid_points_per_void[accumulator_index]++;
-        // when finding nearest neighbours, need to check we don't step over the edge in
-        // each dimension likely not very efficient right now!
-        // std::cout << "index " << index << std::endl;
-        /*while (index < 0){
-            index += total;
-        }
-        while (index >= total) {
-            index -= total;
-        }*/
 
-        // std::cout << "xyz " << x << " " << y << " " << z << std::endl;
-        //  increment x and calculate the array index
-        // std::cout << "xyz " << this_xyz[0] << " " << this_xyz[1] << " " <<
-        // this_xyz[2] << std::endl;
         int x_plus = this_xyz[0] + 1;
         int modx = modulo(this_xyz[0], n_points);
         int mody = modulo(this_xyz[1], n_points) * n_points;
         int modz = modulo(this_xyz[2], n_points) * n_sq;
+
+        // For x,y,z, check locations +-1 on the grid and add to stack if match.
+
         int array_index = modulo(x_plus, n_points) + mody + modz;
-        /// std::cout << "xplus idx " << array_index << std::endl;
         if (grid_binary[array_index] == target) {
           grid_binary[array_index] = replacement;
           scitbx::vec3<int> new_xyz = {x_plus, this_xyz[1], this_xyz[2]};
@@ -107,7 +94,6 @@ flood_fill(scitbx::af::shared<double> grid,
         }
         int x_minus = this_xyz[0] - 1;
         array_index = modulo(x_minus, n_points) + mody + modz;
-        /// std::cout << "xminus idx " << marray_index << std::endl;
         if (grid_binary[array_index] == target) {
           grid_binary[array_index] = replacement;
           scitbx::vec3<int> new_xyz = {x_minus, this_xyz[1], this_xyz[2]};
@@ -116,7 +102,6 @@ flood_fill(scitbx::af::shared<double> grid,
 
         int y_plus = this_xyz[1] + 1;
         array_index = modx + (modulo(y_plus, n_points) * n_points) + modz;
-        /// std::cout << "xplus idx " << array_index << std::endl;
         if (grid_binary[array_index] == target) {
           grid_binary[array_index] = replacement;
           scitbx::vec3<int> new_xyz = {this_xyz[0], y_plus, this_xyz[2]};
@@ -124,7 +109,6 @@ flood_fill(scitbx::af::shared<double> grid,
         }
         int y_minus = this_xyz[1] - 1;
         array_index = modx + (modulo(y_minus, n_points) * n_points) + modz;
-        /// std::cout << "xminus idx " << marray_index << std::endl;
         if (grid_binary[array_index] == target) {
           grid_binary[array_index] = replacement;
           scitbx::vec3<int> new_xyz = {this_xyz[0], y_minus, this_xyz[2]};
@@ -133,7 +117,6 @@ flood_fill(scitbx::af::shared<double> grid,
 
         int z_plus = this_xyz[2] + 1;
         array_index = modx + mody + (modulo(z_plus, n_points) * n_sq);
-        /// std::cout << "xplus idx " << array_index << std::endl;
         if (grid_binary[array_index] == target) {
           grid_binary[array_index] = replacement;
           scitbx::vec3<int> new_xyz = {this_xyz[0], this_xyz[1], z_plus};
@@ -141,7 +124,6 @@ flood_fill(scitbx::af::shared<double> grid,
         }
         int z_minus = this_xyz[2] - 1;
         array_index = modx + mody + (modulo(z_minus, n_points) * n_sq);
-        /// std::cout << "xminus idx " << marray_index << std::endl;
         if (grid_binary[array_index] == target) {
           grid_binary[array_index] = replacement;
           scitbx::vec3<int> new_xyz = {this_xyz[0], this_xyz[1], z_minus};
@@ -152,6 +134,7 @@ flood_fill(scitbx::af::shared<double> grid,
       accumulator_index++;
     }
   }
+  // Now calculate the unweighted centres of mass of each group.
   scitbx::af::shared<scitbx::vec3<double>> centres_of_mass_frac(n_voids);
   for (int i = 0; i < accumulators.size(); i++) {
     std::vector<scitbx::vec3<int>> values = accumulators[i];
@@ -161,12 +144,9 @@ flood_fill(scitbx::af::shared<double> grid,
     double y = 0.0;
     double z = 0.0;
     for (int j = 0; j < n; j++) {
-      /*std::cout << values[j] << " " << (values[j] % n_points) << " "
-                << ((values[j] % n_sq) / n_points) << " " << (values[j] / n_sq)
-                << std::endl;*/
-      x += values[j][0];  // % n_points);
-      y += values[j][1];  // % n_sq) / n_points);
-      z += values[j][2];  // / n_sq);
+      x += values[j][0];
+      y += values[j][1];
+      z += values[j][2];
     }
     x /= divisor;
     y /= divisor;
@@ -174,4 +154,37 @@ flood_fill(scitbx::af::shared<double> grid,
     centres_of_mass_frac[i] = {z, y, x};
   }
   return std::make_tuple(grid_binary, grid_points_per_void, centres_of_mass_frac);
+}
+
+std::tuple<std::vector<int>, scitbx::af::shared<scitbx::vec3<double>>>
+flood_fill_filter(std::vector<int> grid_points_per_void,
+                  scitbx::af::shared<scitbx::vec3<double>> centres_of_mass_frac,
+                  double peak_volume_cutoff = 0.15) {
+  // now filter out based on iqr range and peak_volume_cutoff
+  std::vector<int> grid_points_per_void_unsorted(grid_points_per_void);
+  std::sort(grid_points_per_void.begin(), grid_points_per_void.end());
+  int Q3_index = grid_points_per_void.size() * 3 / 4;
+  int Q1_index = grid_points_per_void.size() / 4;
+  int iqr = grid_points_per_void[Q3_index] - grid_points_per_void[Q1_index];
+  int iqr_multiplier = 5;
+  int cut = (iqr * iqr_multiplier) + grid_points_per_void[Q3_index];
+  /*for (int i = grid_points_per_void.size() - 1; i >= 0; i--) {
+    if (grid_points_per_void_unsorted[i] > cut) {
+      grid_points_per_void_unsorted.erase(grid_points_per_void_unsorted.begin() + i);
+      centres_of_mass_frac.erase(centres_of_mass_frac.begin() + i);
+    }
+  }*/
+  while (grid_points_per_void[grid_points_per_void.size() - 1] > cut) {
+    grid_points_per_void.pop_back();
+  }
+  int max_val = grid_points_per_void[grid_points_per_void.size() - 1];
+
+  int peak_cutoff = (int)(peak_volume_cutoff * max_val);
+  for (int i = grid_points_per_void_unsorted.size() - 1; i >= 0; i--) {
+    if (grid_points_per_void_unsorted[i] <= peak_cutoff) {
+      grid_points_per_void_unsorted.erase(grid_points_per_void_unsorted.begin() + i);
+      centres_of_mass_frac.erase(centres_of_mass_frac.begin() + i);
+    }
+  }
+  return std::make_tuple(grid_points_per_void_unsorted, centres_of_mass_frac);
 }
