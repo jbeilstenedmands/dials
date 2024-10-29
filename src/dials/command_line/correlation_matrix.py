@@ -71,7 +71,7 @@ def run(args=None):
         epilog=help_message,
     )
 
-    params, options, args = parser.parse_args(
+    params, options, unhandled = parser.parse_args(
         args=args, show_diff_phil=False, return_unhandled=True
     )
 
@@ -91,43 +91,55 @@ def run(args=None):
         np.random.seed(params.seed)
         random.seed(params.seed)
 
-    if not params.input.experiments or not params.input.reflections:
+    if (not params.input.experiments or not params.input.reflections) and not unhandled:
         parser.print_help()
         sys.exit()
 
     reflections, experiments = reflections_and_experiments_from_files(
         params.input.reflections, params.input.experiments
     )
-
-    reflections = parse_multiple_datasets(reflections)
-    if len(experiments) != len(reflections):
-        sys.exit(
-            "Mismatched number of experiments and reflection tables found: %s & %s."
-            % (len(experiments), len(reflections))
-        )
-    if len(experiments) < 2:
-        sys.exit(
-            "At least 2 datasets are needed for cluster analysis. Please re-run with more datasets."
-        )
-    try:
-        experiments, reflections = assign_unique_identifiers(experiments, reflections)
-        matrices = CorrelationMatrix(
-            experiments=experiments, reflections=reflections, params=params
-        )
-    except ValueError as e:
-        sys.exit(e)
-
-    matrices.calculate_matrices()
-
-    if params.significant_clusters.output:
-        matrices.output_clusters()
+    if unhandled:
+        arrays = []
+        from dials.util.reference import intensity_array_from_mtz_file
+        for h in unhandled:
+            try:
+                array = intensity_array_from_mtz_file(h)
+            except Exception:
+                sys.exit("Unhandled arg not an mtz file")
+            else:
+                arrays.append(array)
+        matrices = CorrelationMatrix.from_merged_mtz(params, arrays)
+        matrices.calculate_matrices()
     else:
-        logger.info(
-            "For separated clusters in DIALS .expt/.refl output please re-run with significant_clusters.output=True"
-        )
+        reflections = parse_multiple_datasets(reflections)
+        if len(experiments) != len(reflections):
+            sys.exit(
+                "Mismatched number of experiments and reflection tables found: %s & %s."
+                % (len(experiments), len(reflections))
+            )
+        if len(experiments) < 2:
+            sys.exit(
+                "At least 2 datasets are needed for cluster analysis. Please re-run with more datasets."
+            )
+        try:
+            experiments, reflections = assign_unique_identifiers(experiments, reflections)
+            matrices = CorrelationMatrix(
+                experiments=experiments, reflections=reflections, params=params
+            )
+        except ValueError as e:
+            sys.exit(e)
 
-    if params.output.json:
-        matrices.output_json()
+        matrices.calculate_matrices()
+
+        if params.significant_clusters.output:
+            matrices.output_clusters()
+        else:
+            logger.info(
+                "For separated clusters in DIALS .expt/.refl output please re-run with significant_clusters.output=True"
+            )
+
+        if params.output.json:
+            matrices.output_json()
 
     if params.output.html:
         matrices.convert_to_html_json()

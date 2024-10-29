@@ -75,8 +75,32 @@ working_phil = phil_scope.fetch(sources=[phil_overrides])
 
 
 class CorrelationMatrix:
-    def __init__(
-        self,
+
+    def __init__(self, params, datasets, labels=None):
+        self.labels = labels
+        if not self.labels:
+            self._labels_all = flex.size_t(range(len(datasets)))
+            self.labels = flex.size_t(range(len(datasets)))
+        self.datasets = datasets
+        self.params = params
+        self.params.__inject__("lattice_group", self.datasets[0].space_group_info())
+        self.params.__inject__("space_group", self.datasets[0].space_group_info())
+        self.params.__inject__("lattice_symmetry_max_delta", 0.0)
+        self.params.__inject__("best_monoclinic_beta", True)
+
+        # If dimensions are optimised for clustering, need cc_weights=sigma
+        # Otherwise results end up being nonsensical even for high-quality data
+        # Outlier rejection was also found to be beneficial for optimising clustering dimensionality
+        if self.params.dimensions is Auto and self.params.cc_weights != "sigma":
+            raise ValueError("To optimise dimensions, cc_weights=sigma is required.")
+
+        self.cosym_analysis = CosymAnalysis(self.datasets, self.params)
+        self._experiments = []
+
+
+    @classmethod
+    def from_expts_and_refls(
+        cls,
         experiments: ExperimentList,
         reflections: list[reflection_table],
         params: scope_extract = None,
@@ -96,14 +120,14 @@ class CorrelationMatrix:
 
         if params is None:
             params = phil_scope.extract()
-        self.params = params
-        self._reflections = []
-        self.ids_to_identifiers_map = ids_to_identifiers_map
+        #self.params = params
+        sel_reflections = []
+        #self.ids_to_identifiers_map = ids_to_identifiers_map
 
         if len(reflections) == len(experiments):
             for refl, expt in zip(reflections, experiments):
                 sel = get_selection_for_valid_image_ranges(refl, expt)
-                self._reflections.append(refl.select(sel))
+                sel_reflections.append(refl.select(sel))
         else:
             sys.exit(
                 "Number of reflection tables does not match number of experiments."
@@ -111,34 +135,36 @@ class CorrelationMatrix:
 
         # Initial filtering to remove experiments and reflections that do not meet the minimum number of reflections required (params.min_reflections)
 
-        self._experiments, self._reflections = self._filter_min_reflections(
-            experiments, self._reflections
+        experiments, reflections = cls._filter_min_reflections(
+            params, experiments, sel_reflections
         )
 
         # Used for optional json creation that is in a format friendly for import and analysis (for future development)
         # Also to retain dataset ids when used in multiplex
-        if self.ids_to_identifiers_map is None:
-            self.ids_to_identifiers_map = {}
-            for table in self._reflections:
-                self.ids_to_identifiers_map.update(table.experiment_identifiers())
+        if ids_to_identifiers_map is None:
+            ids_to_identifiers_map = {}
+            for table in reflections:
+                ids_to_identifiers_map.update(table.experiment_identifiers())
 
-        self.labels = list(dict.fromkeys(self.ids_to_identifiers_map))
-        self._labels_all = flex.size_t(self.labels)
+        labels = list(dict.fromkeys(ids_to_identifiers_map))
+        labels_all = flex.size_t(labels)
 
         # Filter reflections that do not meet partiality threshold or default I/Sig(I) criteria
 
         datasets = filtered_arrays_from_experiments_reflections(
-            self._experiments,
-            self._reflections,
+            experiments,
+            reflections,
             outlier_rejection_after_filter=False,
             partiality_threshold=params.partiality_threshold,
         )
 
-        self.unmerged_datasets = datasets
+        unmerged_datasets = datasets
 
         # Merge intensities to prepare for cosym analysis
 
-        self.datasets = self._merge_intensities(datasets)
+
+        datasets = self._merge_intensities(datasets)
+        return cls(params, datasets)
 
         # Set required params for cosym to skip symmetry determination and reduce dimensions
 
@@ -155,7 +181,13 @@ class CorrelationMatrix:
 
         self.cosym_analysis = CosymAnalysis(self.datasets, self.params)
 
-    def _merge_intensities(self, datasets: list) -> list:
+    @classmethod
+    def from_merged_mtz(cls,  params, mtzs):
+        datasets = cls._merge_intensities(mtzs)
+        return cls(params, datasets)
+
+    @staticmethod
+    def _merge_intensities(datasets: list) -> list:
         """
         Merge intensities and elimate systematically absent reflections.
 
@@ -176,8 +208,9 @@ class CorrelationMatrix:
 
         return datasets_sys_absent_eliminated
 
+    @staticmethod
     def _filter_min_reflections(
-        self, experiments: ExperimentList, reflections: list[reflection_table]
+        params, experiments: ExperimentList, reflections: list[reflection_table]
     ) -> tuple[ExperimentList, list[reflection_table]]:
         """
         Filter all datasets that have less than the specified number of reflections.
@@ -193,7 +226,7 @@ class CorrelationMatrix:
         identifiers = []
 
         for expt, refl in zip(experiments, reflections):
-            if len(refl) >= self.params.min_reflections:
+            if len(refl) >= params.min_reflections:
                 identifiers.append(expt.identifier)
 
         filtered_datasets = select_datasets_on_identifiers(
@@ -214,10 +247,10 @@ class CorrelationMatrix:
 
         # Cosym proceedures to calculate the cos-angle matrix
         if (
-            len(self.unmerged_datasets)
+            len(self.datasets)
             <= self.params.dimensionality_assessment.maximum_dimensions
         ):
-            dims_to_test = len(self.unmerged_datasets)
+            dims_to_test = len(self.datasets)
         else:
             dims_to_test = self.params.dimensionality_assessment.maximum_dimensions
 
@@ -347,14 +380,14 @@ class CorrelationMatrix:
         min_points = max(
             5,
             int(
-                (len(self.unmerged_datasets) / self.cosym_analysis.target.dim)
+                (len(self.datasets) / self.cosym_analysis.target.dim)
                 * self.params.significant_clusters.min_points_buffer
             ),
         )
 
         # Check for very small datasets
-        if len(self.unmerged_datasets) < min_points:
-            min_points = len(self.unmerged_datasets)
+        if len(self.datasets) < min_points:
+            min_points = len(self.datasets)
             logger.info(
                 "WARNING: less than 5 samples present, OPTICS not optimised for very small datasets."
             )
@@ -441,7 +474,7 @@ class CorrelationMatrix:
             intensities_cluster = []
             labels_cluster = []
             ids = [self._labels_all[id - 1] for id in cluster["datasets"]]
-            for idx, k in zip(self._labels_all, self.unmerged_datasets):
+            for idx, k in zip(self._labels_all, self.datasets):#FIXME
                 if idx in ids:
                     intensities_cluster.append(k)
                     labels_cluster.append(idx)
@@ -526,9 +559,11 @@ class CorrelationMatrix:
             )
 
         # Generate the table for the html that lists all datasets and image paths present in the analysis
-
-        paths = enumerate(e.imageset.paths()[0] for e in self._experiments)
-        self.table_list = [["Experiment/Image Number", "Image Path"], *map(list, paths)]
+        if self._experiments:
+            paths = enumerate(e.imageset.paths()[0] for e in self._experiments)
+            self.table_list = [["Experiment/Image Number", "Image Path"], *map(list, paths)]
+        else:
+            self.table_list = []
 
     def convert_to_importable_json(self, linkage_matrix: np.ndarray) -> OrderedDict:
         """
