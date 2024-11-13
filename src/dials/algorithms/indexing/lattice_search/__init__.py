@@ -182,7 +182,7 @@ class LatticeSearch(indexer.Indexer):
             )
 
         args = []
-
+        self.reflections.as_file("index_rot.refl")
         for cm in candidate_orientation_matrices:
             sel = self.reflections["id"] == -1
             if self.d_min is not None:
@@ -351,6 +351,7 @@ class BasisVectorSearch(LatticeSearch):
         return candidate_crystal_models
 
     def find_candidate_orientation_matrices(self, candidate_basis_vectors):
+        print(f"MAX COMB {self.params.basis_vector_combinations.max_combinations}")
         candidate_crystal_models = combinations.candidate_orientation_matrices(
             candidate_basis_vectors,
             max_combinations=self.params.basis_vector_combinations.max_combinations,

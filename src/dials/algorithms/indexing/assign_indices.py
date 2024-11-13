@@ -29,11 +29,14 @@ class AssignIndicesGlobal(AssignIndicesStrategy):
             inside_resolution_limit = flex.bool(reciprocal_lattice_points.size(), True)
         sel = inside_resolution_limit & (reflections["id"] == -1)
         isel = sel.iselection()
+        #print(list(isel))
+        #print(isel.size(), reflections.size())
         rlps = reciprocal_lattice_points.select(isel)
         refs = reflections.select(isel)
         phi = refs["xyzobs.mm.value"].parts()[2]
 
         UB_matrices = flex.mat3_double([cm.get_A() for cm in experiments.crystals()])
+
         imgset_ids = reflections["imageset_id"].select(sel)
 
         for i_imgset, imgset in enumerate(experiments.imagesets()):
