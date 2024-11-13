@@ -50,15 +50,11 @@ namespace dials { namespace algorithms {
       std::vector<af::shared<double> > lengths_sq;
 
       const double pi_4 = scitbx::constants::pi / 4;
-      
-      
+
       // loop over crystals and assign one hkl per crystal per reflection
       for (int i_lattice = 0; i_lattice < UB_matrices.size(); i_lattice++) {
         scitbx::mat3<double> A = UB_matrices[i_lattice];
         scitbx::mat3<double> A_inv = A.inverse();
-        /*for (int k=0;k<9;k++){
-          std::cout << A_inv[k] << ", " << std::endl;
-        }*/
         af::shared<cctbx::miller::index<> > hkl_ints_(
           af::reserve(reciprocal_space_points.size()));
         af::shared<double> lengths_sq_(af::reserve(reciprocal_space_points.size()));
@@ -69,15 +65,10 @@ namespace dials { namespace algorithms {
           for (std::size_t j = 0; j < 3; j++) {
             hkl_i[j] = scitbx::math::iround(hkl_f[j]);
           }
-          
+
           scitbx::vec3<double> diff = hkl_f - scitbx::vec3<double>(hkl_i);
           hkl_ints_.push_back(hkl_i);
           lengths_sq_.push_back(diff.length_sq());
-          /*if (i_ref == 693) {
-            std::cout << hkl_i[0] << " " << hkl_i[1] << " " << hkl_i[2] << " " << diff.length_sq() << std::endl;
-            std::cout << hkl_f[0] << " " << hkl_f[1] << " " << hkl_f[2] << " " << diff.length_sq() << std::endl;
-            std::cout << rlp[0] << " " << rlp[1] << " " << rlp[2] << " " << diff.length_sq() << std::endl;
-          }*/
         }
         hkl_ints.push_back(hkl_ints_);
         lengths_sq.push_back(lengths_sq_);
@@ -105,11 +96,6 @@ namespace dials { namespace algorithms {
         hkl_to_rlp_map.insert(pair_t(hkl, i_ref));
         crystal_ids_[i_ref] = i_best_lattice;
       }
-
-      /*for (map_t::iterator it = hkl_to_rlp_map.begin(); it != hkl_to_rlp_map.end();
-           it++) {
-          std::cout << it->first[0] << " " << it->first[1] << " " << it->first[2] << " " << it->second << std::endl;
-      }*/
 
       cctbx::miller::index<> curr_hkl(0, 0, 0);
       std::vector<std::size_t> i_same_hkl;
@@ -183,8 +169,6 @@ namespace dials { namespace algorithms {
         }
       }
     }
-    
-    
 
     af::shared<cctbx::miller::index<> > miller_indices() {
       return miller_indices_;

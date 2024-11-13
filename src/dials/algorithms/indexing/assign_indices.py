@@ -24,13 +24,11 @@ class AssignIndicesGlobal(AssignIndicesStrategy):
         reflections["miller_index"] = flex.miller_index(len(reflections), (0, 0, 0))
         if d_min is not None:
             d_spacings = 1 / reciprocal_lattice_points.norms()
-            inside_resolution_limit = d_spacings > d_min
+            inside_resolution_limit = d_spacings >= d_min
         else:
             inside_resolution_limit = flex.bool(reciprocal_lattice_points.size(), True)
         sel = inside_resolution_limit & (reflections["id"] == -1)
         isel = sel.iselection()
-        #print(list(isel))
-        #print(isel.size(), reflections.size())
         rlps = reciprocal_lattice_points.select(isel)
         refs = reflections.select(isel)
         phi = refs["xyzobs.mm.value"].parts()[2]
@@ -41,7 +39,6 @@ class AssignIndicesGlobal(AssignIndicesStrategy):
 
         for i_imgset, imgset in enumerate(experiments.imagesets()):
             sel_imgset = imgset_ids == i_imgset
-
             result = ext.AssignIndices(
                 rlps.select(sel_imgset),
                 phi.select(sel_imgset),
@@ -111,7 +108,6 @@ class AssignIndicesLocal(AssignIndicesStrategy):
 
         for i_imgset, imgset in enumerate(experiments.imagesets()):
             sel_imgset = imgset_ids == i_imgset
-
             result = ext.AssignIndicesLocal(
                 rlps.select(sel_imgset),
                 phi.select(sel_imgset),

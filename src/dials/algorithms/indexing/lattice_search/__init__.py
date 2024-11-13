@@ -111,7 +111,6 @@ basis_vector_search_phil_scope.adopt_scope(
 class LatticeSearch(indexer.Indexer):
     def __init__(self, reflections, experiments, params):
         super().__init__(reflections, experiments, params)
-
         self._lattice_search_strategy = None
         for entry_point in pkg_resources.iter_entry_points(
             "dials.index.lattice_search"
@@ -182,11 +181,10 @@ class LatticeSearch(indexer.Indexer):
             )
 
         args = []
-        self.reflections.as_file("index_rot.refl")
         for cm in candidate_orientation_matrices:
             sel = self.reflections["id"] == -1
             if self.d_min is not None:
-                sel &= 1 / self.reflections["rlp"].norms() > self.d_min
+                sel &= 1 / self.reflections["rlp"].norms() >= self.d_min
             xo, yo, zo = self.reflections["xyzobs.mm.value"].parts()
             imageset_id = self.reflections["imageset_id"]
             experiments = ExperimentList()
@@ -286,6 +284,7 @@ class LatticeSearch(indexer.Indexer):
             logger.debug("best model_likelihood: %.2f", best_model.model_likelihood)
             logger.debug("best n_indexed: %i", best_model.n_indexed)
             self.hkl_offset = best_model.hkl_offset
+            assert 0
             return best_model.crystal, best_model.n_indexed
         else:
             return None, None
