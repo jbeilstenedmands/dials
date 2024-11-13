@@ -41,7 +41,8 @@ def candidate_orientation_matrices(basis_vectors, max_combinations=None):
 
     if max_combinations is not None and max_combinations < len(combinations):
         combinations = combinations[:max_combinations]
-
+    #print(list(combinations[:10]))
+    #assert 0
     half_pi = 0.5 * math.pi
     min_angle = 20 / 180 * math.pi  # 20 degrees, arbitrary cutoff
     for i, j, k in combinations:
@@ -49,6 +50,7 @@ def candidate_orientation_matrices(basis_vectors, max_combinations=None):
         b = basis_vectors[j]
         angle = a.angle(b)
         if angle < min_angle or (math.pi - angle) < min_angle:
+            logger.info(f"skipping {i} {j} {k}")
             continue
         a_cross_b = a.cross(b)
         gamma = a.angle(b)
@@ -58,6 +60,7 @@ def candidate_orientation_matrices(basis_vectors, max_combinations=None):
             a_cross_b = -a_cross_b
         c = basis_vectors[k]
         if abs(half_pi - a_cross_b.angle(c)) < min_angle:
+            logger.info(f"skipping {i} {j} {k}")
             continue
         alpha = b.angle(c, deg=True)
         if alpha < half_pi:
@@ -67,18 +70,25 @@ def candidate_orientation_matrices(basis_vectors, max_combinations=None):
             a = -a
             b = -b
             c = -c
+        logger.info(f"made it to crystal {i} {j} {k}")
         model = Crystal(a, b, c, space_group_symbol="P 1")
         uc = model.get_unit_cell()
+        logger.info(list(uc.parameters()))
+        logger.info(model.get_A())
         try:
             cb_op_to_niggli = uc.change_of_basis_op_to_niggli_cell()
         except iteration_limit_exceeded as e:
             raise DialsIndexError(e)
         model = model.change_basis(cb_op_to_niggli)
-
+        print(cb_op_to_niggli)
         uc = model.get_unit_cell()
+        logger.info(list(uc.parameters()))
+        logger.info(model.get_A())
         params = uc.parameters()
         if uc.volume() > (params[0] * params[1] * params[2] / 100):
             # unit cell volume cutoff from labelit 2004 paper
+            logger.info(f"yielding {i} {j} {k}")
+            #assert 0
             yield model
 
 

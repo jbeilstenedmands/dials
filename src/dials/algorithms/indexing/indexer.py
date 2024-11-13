@@ -977,6 +977,13 @@ class Indexer:
 
     def index_reflections(self, experiments, reflections):
         self._assign_indices(reflections, experiments, d_min=self.d_min)
+        n = 0
+        for i, m in enumerate(reflections["miller_index"]):
+            if m != (0,0,0):
+                n += 1
+                #print(f"{i}: {m[0]} {m[1]} {m[2]} {reflections['id'][i]}")
+        print(experiments[0].crystal.get_A())
+        print(n)
         if self.hkl_offset is not None and self.hkl_offset != (0, 0, 0):
             reflections["miller_index"] = apply_hkl_offset(
                 reflections["miller_index"], self.hkl_offset
