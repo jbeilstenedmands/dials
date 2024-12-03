@@ -121,6 +121,14 @@ def _index_experiments(
         params=params,
     )
     idxr.index()
+    import json
+
+    data = {}
+    n = len(str(len(idxr.candidate_basis_vectors)))
+    for i, v in enumerate(idxr.candidate_basis_vectors):
+        data[str(i).zfill(n)] = list(v)
+    with open("candidate_vectors.json", "w") as f:
+        json.dump(data, f)
     idx_refl = copy.deepcopy(idxr.refined_reflections)
     idx_refl.extend(idxr.unindexed_reflections)
     return idxr.refined_experiments, idx_refl
