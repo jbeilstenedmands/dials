@@ -38,6 +38,9 @@ class ComputeEsdBeamDivergence:
         variance = self._beam_direction_variance_list(
             detector, reflections, centroid_definition
         )
+        '''variance = flumpy.to_numpy(reflections["spot_variance"])
+
+        variance = variance[variance > 0]'''
 
         # Calculate and return the e.s.d of the beam divergence
         self._sigma = math.sqrt(np.sum(variance) / variance.size)
@@ -404,8 +407,9 @@ class ComputeEsdReflectingRange:
                 (list of tau, list of zeta)
             """
             from dials.algorithms.shoebox import MaskCode
-
+            dphi = scan.get_oscillation(deg=False)[1]
             mask_code = MaskCode.Valid | MaskCode.Foreground
+            #reflections = reflections.select(reflections["intensity.sum.value"] > 500)
 
             # Calculate the list of frames and z coords
             sbox = reflections["shoebox"]
@@ -419,8 +423,12 @@ class ComputeEsdReflectingRange:
             zeta2 = []
             num = []
             indices = [0]
-            for s, p, z in zip(sbox, phi, zeta):
+            sig_over_z_list = []
+            for s, this_p, z in zip(sbox, phi, zeta):
                 b = s.bbox
+                var = 0
+                tot_i = 0
+                tot = 0
                 for z0, f in enumerate(range(b[4], b[5])):
                     phi0 = scan.get_angle_from_array_index(int(f), deg=False)
                     phi1 = scan.get_angle_from_array_index(int(f) + 1, deg=False)
@@ -428,11 +436,36 @@ class ComputeEsdReflectingRange:
                     m = s.mask[z0 : z0 + 1, :, :]
                     d = flex.sum(d.as_1d().select(m.as_1d() == mask_code))
                     if d > 0:
-                        tau.append((phi1 + phi0) / 2.0 - p)
+                        var += d * (((phi1 + phi0) / 2.0 - this_p)**2)
+                        tot += 1
+                        tot_i += d
+                var_im = var / tot_i
+                sigma_rad = (var_im ** 0.5)
+                sig_over_z = sigma_rad * z
+                #print(sigma_rad, tot, sig_over_z)
+                if sigma_rad > 0.0 and tot > 1:
+                    sig_over_z_list.append(abs(sig_over_z))
+
+                for z0, f in enumerate(range(b[4], b[5])):
+                    phi0 = scan.get_angle_from_array_index(int(f), deg=False)
+                    phi1 = scan.get_angle_from_array_index(int(f) + 1, deg=False)
+                    d = s.data[z0 : z0 + 1, :, :]
+                    m = s.mask[z0 : z0 + 1, :, :]
+                    d = flex.sum(d.as_1d().select(m.as_1d() == mask_code))
+                    if d > 0:
+                        tau.append((phi1 + phi0) / 2.0 - this_p)
                         zeta2.append(z)
                         num.append(d)
                 if len(zeta2) > indices[-1]:
                     indices.append(len(zeta2))
+            '''import matplotlib.pyplot as plt
+            import numpy as np
+            a = np.array(sig_over_z_list)
+            #a = a[a<4]
+            #a = a[a>0.0]
+
+            plt.hist(a, bins=100)
+            plt.show()'''
 
             # Return the list of tau and zeta
             return (
