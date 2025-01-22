@@ -237,7 +237,7 @@ indexing {
     }
   }
   stills {
-    indexer = *Auto stills sequences
+    indexer = *Auto stills sequences ssx
       .type = choice
       .help = Use the stills or sequences indexer.  Auto: choose based on the input \
               imagesets (stills or sequences).
@@ -397,6 +397,8 @@ class Indexer:
 
             use_stills_indexer = has_stills
 
+            use_ssx_indexer = False
+
             if not (
                 params.indexing.stills.indexer is libtbx.Auto
                 or params.indexing.stills.indexer.lower() == "auto"
@@ -404,6 +406,9 @@ class Indexer:
                 if params.indexing.stills.indexer == "stills":
                     use_stills_indexer = True
                 elif params.indexing.stills.indexer == "sequences":
+                    use_stills_indexer = False
+                elif params.indexing.stills.indexer == "ssx":
+                    use_ssx_indexer = True
                     use_stills_indexer = False
                 else:
                     assert False
@@ -447,6 +452,10 @@ class Indexer:
                         from dials.algorithms.indexing.stills_indexer import (
                             StillsIndexerBasisVectorSearch as IndexerType,
                         )
+                    elif use_ssx_indexer:
+                        from dials.algorithms.indexing.ssx_indexer import (
+                            SSXIndexerBasisVectorSearch as IndexerType,
+                        )
                     else:
                         from dials.algorithms.indexing.lattice_search import (
                             BasisVectorSearch as IndexerType,
@@ -460,6 +469,10 @@ class Indexer:
                         if use_stills_indexer:
                             from dials.algorithms.indexing.stills_indexer import (
                                 StillsIndexerLatticeSearch as IndexerType,
+                            )
+                        elif use_ssx_indexer:
+                            from dials.algorithms.indexing.ssx_indexer import (
+                                SSXIndexerLatticeSearch as IndexerType,
                             )
                         else:
                             from dials.algorithms.indexing.lattice_search import (
