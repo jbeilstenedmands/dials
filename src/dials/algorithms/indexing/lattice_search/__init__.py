@@ -186,7 +186,7 @@ class LatticeSearch(indexer.Indexer):
         for cm in candidate_orientation_matrices:
             sel = self.reflections["id"] == -1
             if self.d_min is not None:
-                sel &= 1 / self.reflections["rlp"].norms() > self.d_min
+                sel &= 1 / self.reflections["rlp"].norms() >= self.d_min
             xo, yo, zo = self.reflections["xyzobs.mm.value"].parts()
             imageset_id = self.reflections["imageset_id"]
             experiments = ExperimentList()
@@ -390,11 +390,14 @@ class BasisVectorSearch(LatticeSearch):
 
     def debug_show_candidate_basis_vectors(self):
         vectors = self.candidate_basis_vectors
-
+        import json
+        out = {}
         logger.debug("Candidate basis vectors:")
         for i, v in enumerate(vectors):
             logger.debug(f"{i} {v.length()}")  # , vector_heights[i]
-
+            out[f"{i:02d}"] = list(v)
+        with open("candidate_vecs.json", "w") as f:
+            json.dump(out, f, indent=2)
         if self.params.debug:
             # print a table of the angles between each pair of vectors
             s = StringIO()

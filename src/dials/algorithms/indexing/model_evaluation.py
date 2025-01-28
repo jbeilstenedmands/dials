@@ -335,7 +335,7 @@ class ModelEvaluation(Strategy):
                 refiner = RefinerFactory.from_parameters_data_experiments(
                     self._params, indexed_reflections, experiments
                 )
-                refiner.run()
+                #refiner.run()
             except (RuntimeError, ValueError):
                 return
             else:
