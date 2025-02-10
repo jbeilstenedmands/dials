@@ -360,7 +360,7 @@ namespace dials { namespace algorithms { namespace profile_model {
         // Mark those points within as Foreground and those without as
         // Background.
 
-        vec2<double> shoebox_centroid_px = panel.get_ray_intersection_px(s1);
+        /*vec2<double> shoebox_centroid_px = panel.get_ray_intersection_px(s1);
         double attenuation_length = panel.attenuation_length(shoebox_centroid_px);
 
         af::versa<double, af::c_grid<2> > dxy_array(
@@ -373,7 +373,63 @@ namespace dials { namespace algorithms { namespace profile_model {
                 .normalize()
               * s0_length);
             dxy_array(j, i) = (gxy[0] * gxy[0] + gxy[1] * gxy[1]) * delta_b_r2;
+          }*/
+        vec2<double> shoebox_centroid_px = panel.get_ray_intersection_px(s1);
+        double attenuation_length = panel.attenuation_length(shoebox_centroid_px);
+        af::versa<double, af::c_grid<3> > dxyz_array(
+          af::c_grid<3>(zsize + 1, ysize + 1, xsize + 1));
+
+        for (std::size_t k = 0; k <= zsize; ++k) {
+          for (int j = 0; j <= ysize; ++j) {
+            for (int i = 0; i <= xsize; ++i) {
+              double x = x0 + i;  // + 0.5;
+              double y = y0 + j;  // + 0.5;
+              // int z = z0 + k;
+              vec3<double> s1dash =
+                panel.get_pixel_lab_coord(vec2<double>(x, y), attenuation_length)
+                  .normalize()
+                * s0_length;
+              // nned to get epsilon 1.
+              // s1_dash = box.beam_vectors
+              double phidash = phi0_ + (z0 + k - index0_) * dphi_;
+              vec3<double> epsilon_coords = cs.coords_from_s1vector(s1dash, phidash);
+              dxyz_array(k, j, i) =
+                ((epsilon_coords[0] * epsilon_coords[0]
+                  + epsilon_coords[1] * epsilon_coords[1])
+                * delta_b_r2)
+                + ((epsilon_coords[2] * epsilon_coords[2]) * delta_m_r2);
+              // int mask_value = (d <= 1.0) ? Foreground : Background;
+              // mask(k, j, i) |= mask_value;
+            }
           }
+        }
+
+        for (int k = 0; k < zsize; k++) {
+          for (int j = 0; j < ysize; ++j) {
+            for (int i = 0; i < xsize; ++i) {
+              double d1 = dxyz_array(k, j, i);
+              double d2 = dxyz_array(k, j + 1, i);
+              double d3 = dxyz_array(k, j, i + 1);
+              double d4 = dxyz_array(k, j + 1, i + 1);
+              double d5 = dxyz_array(k + 1, j, i);
+              double d6 = dxyz_array(k + 1, j + 1, i);
+              double d7 = dxyz_array(k + 1, j, i + 1);
+              double d8 = dxyz_array(k + 1, j + 1, i + 1);
+              double d = std::min(std::min(std::min(d1, d2), std::min(d3, d4)),
+                                  std::min(std::min(d5, d6), std::min(d7, d8)));
+              int mask_value = (d <= 1.0) ? Foreground : Background;
+              mask(k, j, i) |= mask_value;
+            }
+          }
+        }
+
+        /*af::versa<double, af::c_grid<2> > dxy_array(af::c_grid<2>(ysize + 1, xsize +
+        1)); for (int j = 0; j <= ysize; ++j) { for (int i = 0; i <= xsize; ++i) {
+          vec2<double> gxy = cs.from_beam_vector(
+            panel.get_pixel_lab_coord(vec2<double>(x0 + i, y0 + j), attenuation_length)
+              .normalize()
+            * s0_length);
+          dxy_array(j, i) = (gxy[0] * gxy[0] + gxy[1] * gxy[1]) * delta_b_r2;
         }
 
         for (int j = 0; j < ysize; ++j) {
@@ -391,7 +447,7 @@ namespace dials { namespace algorithms { namespace profile_model {
                   cs.from_rotation_angle_fast(phi0_ + (z0 + k + 1 - index0_) * dphi_);
                 double gz = std::abs(gz1) < std::abs(gz2) ? gz1 : gz2;
                 double gzc2 = gz * gz * delta_m_r2;
-                /* int mask_value = (dxy + gzc2 <= 1.0) ? Foreground : Background; */
+                /* int mask_value = (dxy + gzc2 <= 1.0) ? Foreground : Background;
                 if (!adjacent) {
                   int mask_value = (dxy <= 1.0) ? Foreground : Background;
                   mask(k, j, i) |= mask_value;
@@ -399,11 +455,35 @@ namespace dials { namespace algorithms { namespace profile_model {
                   if (dxy + gzc2 <= 1.0) {
                     mask(k, j, i) |= Overlapped;
                   }
+      for (int j = 0; j < ysize; ++j) {
+        for (int i = 0; i < xsize; ++i) {
+          double dxy1 = dxy_array(j, i);
+          double dxy2 = dxy_array(j + 1, i);
+          double dxy3 = dxy_array(j, i + 1);
+          double dxy4 = dxy_array(j + 1, i + 1);
+          double dxy = std::min(std::min(dxy1, dxy2), std::min(dxy3, dxy4));
+          for (std::size_t k = 0; k < zsize; ++k) {
+            if (z0 + (int)k >= index0_ && z0 + (int)k < index1_) {
+              double gz1 =
+                cs.from_rotation_angle_fast(phi0_ + (z0 + k - index0_) * dphi_);
+              double gz2 =
+                cs.from_rotation_angle_fast(phi0_ + (z0 + k + 1 - index0_) * dphi_);
+              double gz = std::abs(gz1) < std::abs(gz2) ? gz1 : gz2;
+              double gzc2 = gz * gz * delta_m_r2;
+              //int mask_value = (dxy + gzc2 <= 1.0) ? Foreground : Background;
+              if (!adjacent) {
+                int mask_value = (dxy <= 1.0) ? Foreground : Background;
+                mask(k, j, i) |= mask_value;
+              } else {
+                if (dxy + gzc2 <= 1.0) {
+                  mask(k, j, i) |= Overlapped;
                 }
               }
             }
           }
         }
+      }
+      }*/
       }
 
       /**

@@ -128,6 +128,8 @@ def run_simple_integrate(params, experiments, reflections):
     from scitbx import matrix
 
     sbox = reflections["shoebox"]
+    ## we want s1 based on observed centroid positions.
+    reflections.map_centroids_to_reciprocal_space(experiments)
     s1vecs = reflections["s1"]
     s0 = matrix.col(experiment.beam.get_s0())
     m2 = matrix.col(experiment.goniometer.get_rotation_axis_datum())
@@ -184,9 +186,9 @@ def run_simple_integrate(params, experiments, reflections):
         # assert 0
         # then transform to kabsch space
         bbox_z_width = box.zsize()
-        phi_0p5 = scan.get_angle_from_array_index(z, deg=False)
-        phi1 = scan.get_angle_from_array_index(z + (1.0 / 6.0), deg=False)
-        eps3_lim = zeta * (phi1 - phi_0p5)
+        # phi_0p5 = scan.get_angle_from_array_index(z, deg=False)
+        # phi1 = scan.get_angle_from_array_index(z + (1.0 / 6.0), deg=False)
+        # eps3_lim = zeta * (phi1 - phi_0p5)
         for s1p, c in zip(s1primes, coords):
             # get sprime = s1 to that pixel
             # get phi'
@@ -198,7 +200,7 @@ def run_simple_integrate(params, experiments, reflections):
             #    eps3 = eps3_lim
             ## investigate setting this, but probably just want enough for decent statistic e.g. a few hundred.
             ## probably need at least 3.
-            if bbox_z_width >= 12:
+            if bbox_z_width >= 8:
                 eps3 = zeta * (phip - phi)
             else:
                 eps3 = 0.0
