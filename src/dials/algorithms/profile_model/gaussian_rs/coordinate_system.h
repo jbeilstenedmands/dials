@@ -249,6 +249,17 @@ namespace dials {
       return double4(-1.0, 1.0, m2e3_m2ps - std::sqrt(r), m2e3_m2ps + std::sqrt(r));
     }
 
+    vec3<double> coords_from_s1vector(const vec3<double> &s_dash,
+                                      double phi_dash) const {
+      double s1_length = s1_.length();
+      DIALS_ASSERT(s1_length > 0);
+      vec3<double> scaled_e1 = e1_ / s1_length;
+      vec3<double> scaled_e2 = e2_ / s1_length;
+      return vec3<double>(scaled_e1 * (s_dash - s1_),
+                          scaled_e2 * (s_dash - s1_),
+                          zeta_ * (phi_dash - phi_));
+    }
+
     /**
      * Transform the beam vector to the reciprocal space coordinate system.
      * @param s_dash The beam vector
