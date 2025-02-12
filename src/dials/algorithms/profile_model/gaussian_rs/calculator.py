@@ -23,6 +23,54 @@ from dials.array_family import flex
 logger = logging.getLogger(__name__)
 
 
+class ComputeSigmaInKabschSpace:
+    def __init__(self, detector, reflections, beam, centroid_definition="com"):
+        shoebox = reflections["shoebox"]
+        xyz = reflections["xyzobs.px.value"]
+
+        # Loop through all the reflections
+        variances = np.array([], dtype=np.float64)
+
+        if centroid_definition == "com":
+            # Calculate the beam vector at the centroid
+            s1_centroid = []
+            for r in range(len(reflections)):
+                panel = shoebox[r].panel
+                s1_centroid.append(detector[panel].get_pixel_lab_coord(xyz[r][0:2]))
+        else:
+            s1_centroid = reflections["s1"]
+
+        from scitbx import matrix
+
+        s0 = matrix.col(beam.get_s0())
+        for i, (s1, box) in enumerate(zip(s1_centroid, shoebox)):
+            s1 = matrix.col(s1)
+            e1 = s1.cross(s0).normalize()
+            e2 = s1.cross(e1).normalize()
+            mask = box.mask != 0
+            values = flumpy.to_numpy(box.values(mask))
+            # coords = flumpy.to_numpy(box.coords(mask))
+            s1primes = box.beam_vectors(detector, mask)
+            mags1 = (s1.dot(s1)) ** 0.5
+            ntot = np.sum(values)
+            varx = 0
+            vary = 0
+            for s1p, n in zip(s1primes, values):
+                s1p = matrix.col(s1p)
+                eps1 = e1.dot(s1p - s1) / mags1
+                eps2 = e2.dot(s1p - s1) / mags1
+                varx += n * (eps1**2)
+                vary += n * (eps2**2)
+            varx /= ntot
+            vary /= ntot
+            variances = np.append(variances, (varx + vary) / 2.0)
+        self._sigma = math.sqrt(np.sum(variances) / variances.size)
+
+    def sigma(self):
+        """Return the E.S.D of the beam divergence."""
+        return self._sigma
+
+
 class ComputeEsdBeamDivergence:
     """Calculate the E.s.d of the beam divergence."""
 
@@ -536,8 +584,11 @@ class ProfileModelCalculator:
 
             logger.info("Using %d / %d reflections for sigma calculation", n_use, n_all)
             logger.info("Calculating E.S.D Beam Divergence.")
-            beam_divergence = ComputeEsdBeamDivergence(
-                detector, reflections, centroid_definition
+            # beam_divergence = ComputeEsdBeamDivergence(
+            #    detector, reflections, centroid_definition="com"
+            # )
+            beam_divergence = ComputeSigmaInKabschSpace(
+                detector, reflections, beam, centroid_definition="com"
             )
 
             self._sigma_b = beam_divergence.sigma()
