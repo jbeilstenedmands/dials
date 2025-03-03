@@ -392,23 +392,42 @@ def run_simple_integrate(params, experiments, reflections):
     predicted_reflections["shoebox"] = flex.shoebox(
         predicted_reflections["panel"],
         predicted_reflections["bbox"],
-        allocate=False,
+        allocate=True,
         flatten=False,
+    )
+    n_sigma=3
+    from dials.algorithms.profile_model.gaussian_rs import MaskCalculator3D
+        
+    mask_foreground = MaskCalculator3D(
+        experiment.beam,
+        experiment.detector,
+        experiment.goniometer,
+        experiment.scan,
+        n_sigma * sigma_b,
+        n_sigma * sigma_m,
+    )
+
+    # Mask the foreground
+    mask_foreground(
+        predicted_reflections["shoebox"], predicted_reflections["s1"],
+        predicted_reflections["xyzcal.px"].parts()[2], predicted_reflections["panel"]
     )
 
     # Get actual shoebox values and the reflections for each image
+    imageset= experiment.imageset
+    frame0, frame1 = imageset.get_array_range()
     shoebox_processor = ShoeboxProcessor(
         predicted_reflections,
         len(experiment.detector),
-        0,
-        len(experiment.imageset),
+        frame0,
+        frame1,
         False,
     )
 
     for i in range(len(experiment.imageset)):
         image = experiment.imageset.get_corrected_data(i)
         mask = experiment.imageset.get_mask(i)
-        shoebox_processor.next_data_only(make_image(image, mask))
+        shoebox_processor.next(make_image(image, mask))
 
     predicted_reflections.as_file("test.refl")
 

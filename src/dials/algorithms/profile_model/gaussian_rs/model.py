@@ -518,6 +518,9 @@ class Model(ProfileModelExt):
         bbox = calculate(
             reflections["s1"], reflections["xyzcal.px"].parts()[2], reflections["panel"]
         )
+        print("here")
+        x0, x1, y0, y1, z0, z1 = bbox.parts()
+        print(max(z1))
 
         # Return the bounding boxes
         return bbox

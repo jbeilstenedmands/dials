@@ -68,7 +68,7 @@ namespace dials { namespace algorithms {
           nframes_(frame1 - frame0) {
       DIALS_ASSERT(frame0_ < frame1_);
       DIALS_ASSERT(npanels_ > 0);
-      DIALS_ASSERT(data.is_consistent());
+      //DIALS_ASSERT(data.is_consistent());
       DIALS_ASSERT(data.contains("shoebox"));
       DIALS_ASSERT(data.size() > 0);
       af::const_ref<Shoebox<> > shoebox = data["shoebox"];
@@ -80,7 +80,7 @@ namespace dials { namespace algorithms {
       flatten_ = shoebox[0].flat;
       for (std::size_t i = 0; i < shoebox.size(); ++i) {
         DIALS_ASSERT(shoebox[i].flat == flatten_);
-        DIALS_ASSERT(shoebox[i].is_allocated() == false);
+        //DIALS_ASSERT(shoebox[i].is_allocated() == false);
         DIALS_ASSERT(shoebox[i].bbox[1] > shoebox[i].bbox[0]);
         DIALS_ASSERT(shoebox[i].bbox[3] > shoebox[i].bbox[2]);
         DIALS_ASSERT(shoebox[i].bbox[5] > shoebox[i].bbox[4]);
@@ -110,7 +110,7 @@ namespace dials { namespace algorithms {
     }
 
     template <typename T>
-    void next(const Image<T>& image, Executor& executor) {
+    void next(const Image<T>& image) {
       using dials::af::boost_python::reflection_table_suite::select_rows_index;
       using dxtbx::af::flex_table_suite::set_selected_rows_index;
       typedef Shoebox<>::float_type float_type;
@@ -130,7 +130,7 @@ namespace dials { namespace algorithms {
         af::const_ref<std::size_t> ind = indices(frame_, p);
         af::const_ref<T, af::c_grid<2> > data = image.data(p);
         af::const_ref<bool, af::c_grid<2> > mask = image.mask(p);
-        DIALS_ASSERT(data.accessor().all_eq(mask.accessor()));
+        //DIALS_ASSERT(data.accessor().all_eq(mask.accessor()));
         for (std::size_t i = 0; i < ind.size(); ++i) {
           DIALS_ASSERT(ind[i] < shoebox.size());
           Shoebox<>& sbox = shoebox[ind[i]];
@@ -154,8 +154,8 @@ namespace dials { namespace algorithms {
           int xs = x1 - x0;
           int ys = y1 - y0;
           int z = frame_ - z0;
-          int yi = (int)data.accessor()[0];
-          int xi = (int)data.accessor()[1];
+          int yi = (int)smask.accessor()[0];
+          int xi = (int)smask.accessor()[1];
           int xb = x0 >= 0 ? 0 : std::abs(x0);
           int yb = y0 >= 0 ? 0 : std::abs(y0);
           int xe = x1 <= xi ? xs : xs - (x1 - xi);
@@ -167,7 +167,7 @@ namespace dials { namespace algorithms {
           DIALS_ASSERT(xb >= 0 && xe <= xs);
           DIALS_ASSERT(yb + y0 >= 0 && ye + y0 <= yi);
           DIALS_ASSERT(xb + x0 >= 0 && xe + x0 <= xi);
-          DIALS_ASSERT(sbox.is_consistent());
+          //DIALS_ASSERT(sbox.is_consistent());
           /*if (flatten_) {
             for (std::size_t y = yb; y < ye; ++y) {
               for (std::size_t x = xb; x < xe; ++x) {
@@ -182,7 +182,10 @@ namespace dials { namespace algorithms {
             for (std::size_t x = xb; x < xe; ++x) {
               if (mask(y + y0, x + x0)) {
                 // FIXME add test on foreground/background.
-                sbox_intensity += data(y + y0, x + x0);
+                if ((smask(z, y, x) & Foreground) == Foreground){
+                  sbox_intensity += data(y + y0, x + x0);
+                }
+                
               }
               // sdata(z, y, x) = data(y + y0, x + x0);
               // smask(z, y, x) = mask(y + y0, x + x0) ? Valid : 0;

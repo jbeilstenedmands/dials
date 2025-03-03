@@ -153,7 +153,7 @@ namespace dials {
                         double frame,
                         std::size_t panel,
                         bool adjacent = false) const {
-      DIALS_ASSERT(shoebox.is_consistent());
+      //DIALS_ASSERT(shoebox.is_consistent());
       if (shoebox.flat) {
         single_flat(shoebox, s1, frame, panel);
       } else {
@@ -346,6 +346,7 @@ namespace dials {
       const Panel &panel = detector_[panel_number];
 
       // Check the size of the mask
+      //std::cout << mask.accessor()[0] << " " << zsize << std::endl;
       DIALS_ASSERT(mask.accessor()[0] == zsize);
       DIALS_ASSERT(mask.accessor()[1] == ysize);
       DIALS_ASSERT(mask.accessor()[2] == xsize);

@@ -128,9 +128,9 @@ namespace dials { namespace model {
     void allocate_with_value(int maskcode) {
       std::size_t zs = flat ? 1 : zsize();
       af::c_grid<3> accessor(zs, ysize(), xsize());
-      data = af::versa<FloatType, af::c_grid<3> >(accessor, 0.0);
+      //data = af::versa<FloatType, af::c_grid<3> >(accessor, 0.0);
       mask = af::versa<int, af::c_grid<3> >(accessor, maskcode);
-      background = af::versa<FloatType, af::c_grid<3> >(accessor, 0.0);
+      //background = af::versa<FloatType, af::c_grid<3> >(accessor, 0.0);
     }
 
     /**
