@@ -331,6 +331,21 @@ namespace dials { namespace algorithms { namespace boost_python {
       .def("process", pure_virtual(&Executor::process))
       .enable_pickling();
 
+    class_<ShoeboxProcessorV2>("ShoeboxProcessorV2", no_init)
+      .def(init<af::reflection_table, std::size_t, int, int, bool>())
+      .def("next", &ShoeboxProcessorV2::next<double>)
+      .def("next", &ShoeboxProcessorV2::next<int>)
+      .def("next_data_only", &ShoeboxProcessorV2::next_data_only<double>)
+      .def("next_data_only", &ShoeboxProcessorV2::next_data_only<int>)
+      .def("frame0", &ShoeboxProcessorV2::frame0)
+      .def("frame1", &ShoeboxProcessorV2::frame1)
+      .def("frame", &ShoeboxProcessorV2::frame)
+      .def("nframes", &ShoeboxProcessorV2::nframes)
+      .def("npanels", &ShoeboxProcessorV2::npanels)
+      .def("finished", &ShoeboxProcessorV2::finished)
+      .def("extract_time", &ShoeboxProcessorV2::extract_time)
+      .def("process_time", &ShoeboxProcessorV2::process_time);
+
     class_<ShoeboxProcessor>("ShoeboxProcessor", no_init)
       .def(init<af::reflection_table, std::size_t, int, int, bool>())
       .def("next", &ShoeboxProcessor::next<double>)

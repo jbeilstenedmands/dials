@@ -12,21 +12,24 @@ from dials.algorithms.profile_model.gaussian_rs.calculator import (
     ComputeEsdBeamDivergence,
     ComputeEsdReflectingRange,
 )
-from dials.algorithms.shoebox import MaskCode
 from dials.array_family import flex
 from dials.command_line.integrate import filter_reference_pixels, process_reference
-from dials.extensions.simple_background_ext import SimpleBackgroundExt
-from dials.extensions.simple_centroid_ext import SimpleCentroidExt
 from dials.model.data import make_image
 from dials.util.options import ArgumentParser, reflections_and_experiments_from_files
 from dials.util.phil import parse
 from dials.util.version import dials_version
-from dials_algorithms_integration_integrator_ext import ShoeboxProcessor
+from dials_algorithms_integration_integrator_ext import (
+    ShoeboxProcessorV2 as ShoeboxProcessor,
+)
 
 logger = logging.getLogger("dials.command_line.simple_integrate")
 
 phil_scope = parse(
     """
+sigma_b = None
+  .type = float(allow_none=True)
+sigma_m = None
+  .type = float(allow_none=True)
 output {
 reflections = 'simple_integrated.refl'
     .type = str
@@ -67,7 +70,7 @@ def run():
         epilog=__doc__,
         read_experiments=True,
         read_reflections=True,
-        check_format=False,
+        check_format=True,
     )
 
     params, options = parser.parse_args(args=None, show_diff_phil=False)
@@ -124,7 +127,8 @@ def run_simple_integrate(params, experiments, reflections):
 
     # Filter reflections to use to create the model
     min_zeta = 0.05
-    from dxtbx import flumpy
+    # reflections.map_centroids_to_reciprocal_space(experiments)
+    '''from dxtbx import flumpy
     from scitbx import matrix
 
     sbox = reflections["shoebox"]
@@ -275,27 +279,30 @@ def run_simple_integrate(params, experiments, reflections):
     plt.show()
     plt.hist(c3, bins=100)
     plt.show()
-    assert 0
+    assert 0'''
 
     used_in_ref = reflections.get_flags(reflections.flags.used_in_refinement)
     model_reflections = reflections.select(used_in_ref)
     zeta = model_reflections.compute_zeta(experiment)
     model_reflections = model_reflections.select(flex.abs(zeta) >= min_zeta)
-    sbox = model_reflections["shoebox"]
+    # sbox = model_reflections["shoebox"]
 
     # centroids = model
     # sigma_D in 3.1 of Kabsch 2010
-    sigma_b = ComputeEsdBeamDivergence(
+    """sigma_b = ComputeEsdBeamDivergence(
         experiment.detector, model_reflections, centroid_definition="com"
     ).sigma()
-    logger.info(f"Sigma_b com: {sigma_b}")
-    sigma_b = ComputeEsdBeamDivergence(
-        experiment.detector, model_reflections, centroid_definition="s1"
-    ).sigma()
+    logger.info(f"Sigma_b com: {sigma_b}")"""
+    if params.sigma_b:
+        sigma_b = params.sigma_b
+    else:
+        sigma_b = ComputeEsdBeamDivergence(
+            experiment.detector, model_reflections, centroid_definition="s1"
+        ).sigma()
     logger.info(f"Sigma_b s1: {sigma_b}")
 
     # sigma_m in 3.1 of Kabsch 2010
-    sigma_m = ComputeEsdReflectingRange(
+    """sigma_m = ComputeEsdReflectingRange(
         experiment.crystal,
         experiment.beam,
         experiment.detector,
@@ -303,21 +310,24 @@ def run_simple_integrate(params, experiments, reflections):
         experiment.scan,
         model_reflections,
         algorithm="extended",
-    ).sigma()
-    print(f"Sigma_m xyzcal: {sigma_m}")
-    model_reflections["xyzcal.mm"] = model_reflections["xyzobs.mm.value"]
-    sigma_m = ComputeEsdReflectingRange(
-        experiment.crystal,
-        experiment.beam,
-        experiment.detector,
-        experiment.goniometer,
-        experiment.scan,
-        model_reflections,
-        algorithm="extended",
-    ).sigma()
+    ).sigma()"""
+    # print(f"Sigma_m xyzcal: {sigma_m}")
+    # model_reflections["xyzcal.mm"] = model_reflections["xyzobs.mm.value"]
+    if params.sigma_m:
+        sigma_m = params.sigma_m
+    else:
+        sigma_m = ComputeEsdReflectingRange(
+            experiment.crystal,
+            experiment.beam,
+            experiment.detector,
+            experiment.goniometer,
+            experiment.scan,
+            model_reflections,
+            algorithm="extended",
+        ).sigma()
     print(f"Sigma_m xyobs: {sigma_m}")
     ## try new method
-    from dxtbx import flumpy
+    """from dxtbx import flumpy
 
     sbox = model_reflections["shoebox"]
     # centroids = model
@@ -340,12 +350,12 @@ def run_simple_integrate(params, experiments, reflections):
         print(x, y, z)
         assert 0
 
-    assert 0
-    background_algorithm = SimpleBackgroundExt(params=None, experiments=experiments)
-    success = background_algorithm.compute_background(model_reflections)
-    model_reflections.set_flags(
-        ~success, model_reflections.flags.failed_during_background_modelling
-    )
+    assert 0"""
+    # background_algorithm = SimpleBackgroundExt(params=None, experiments=experiments)
+    # success = background_algorithm.compute_background(model_reflections)
+    # model_reflections.set_flags(
+    #    ~success, model_reflections.flags.failed_during_background_modelling
+    # )
     sigma_m = ComputeEsdReflectingRange(
         experiment.crystal,
         experiment.beam,
@@ -356,7 +366,7 @@ def run_simple_integrate(params, experiments, reflections):
         algorithm="extended",
     ).sigma()
     print(sigma_b, sigma_m)
-    assert 0
+    # assert 0
     # The Gaussian model given in 2.3 of Kabsch 2010
     experiment.profile = GaussianRSProfileModel(
         params=params, n_sigma=3, sigma_b=sigma_b, sigma_m=sigma_m
@@ -400,7 +410,9 @@ def run_simple_integrate(params, experiments, reflections):
         mask = experiment.imageset.get_mask(i)
         shoebox_processor.next_data_only(make_image(image, mask))
 
-    predicted_reflections.is_overloaded(experiments)
+    predicted_reflections.as_file("test.refl")
+
+    """predicted_reflections.is_overloaded(experiments)
     predicted_reflections.compute_mask(experiments)
     predicted_reflections.contains_invalid_pixels()
 
@@ -435,7 +447,7 @@ def run_simple_integrate(params, experiments, reflections):
     predicted_reflections["num_pixels.background_used"] = sboxs.count_mask_values(
         MaskCode.Valid | MaskCode.Background | MaskCode.BackgroundUsed
     )
-    predicted_reflections["num_pixels.foreground"] = nvalfg
+    predicted_reflections["num_pixels.foreground"] = nvalfg"""
 
     """
     Load modeller that will calculate reference profiles and
