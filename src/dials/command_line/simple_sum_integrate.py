@@ -67,7 +67,7 @@ def run():
         epilog=__doc__,
         read_experiments=True,
         read_reflections=True,
-        check_format=False,
+        check_format=True,
     )
 
     params, options = parser.parse_args(args=None, show_diff_phil=False)
@@ -124,7 +124,7 @@ def run_simple_integrate(params, experiments, reflections):
 
     # Filter reflections to use to create the model
     min_zeta = 0.05
-    from dxtbx import flumpy
+    '''from dxtbx import flumpy
     from scitbx import matrix
 
     sbox = reflections["shoebox"]
@@ -275,7 +275,7 @@ def run_simple_integrate(params, experiments, reflections):
     plt.show()
     plt.hist(c3, bins=100)
     plt.show()
-    assert 0
+    assert 0'''
 
     used_in_ref = reflections.get_flags(reflections.flags.used_in_refinement)
     model_reflections = reflections.select(used_in_ref)
@@ -317,7 +317,7 @@ def run_simple_integrate(params, experiments, reflections):
     ).sigma()
     print(f"Sigma_m xyobs: {sigma_m}")
     ## try new method
-    from dxtbx import flumpy
+    """from dxtbx import flumpy
 
     sbox = model_reflections["shoebox"]
     # centroids = model
@@ -338,9 +338,9 @@ def run_simple_integrate(params, experiments, reflections):
         y = y / n
         z = z / n
         print(x, y, z)
-        assert 0
+        assert 0"""
 
-    assert 0
+    # assert 0
     background_algorithm = SimpleBackgroundExt(params=None, experiments=experiments)
     success = background_algorithm.compute_background(model_reflections)
     model_reflections.set_flags(
@@ -356,7 +356,7 @@ def run_simple_integrate(params, experiments, reflections):
         algorithm="extended",
     ).sigma()
     print(sigma_b, sigma_m)
-    assert 0
+    # assert 0
     # The Gaussian model given in 2.3 of Kabsch 2010
     experiment.profile = GaussianRSProfileModel(
         params=params, n_sigma=3, sigma_b=sigma_b, sigma_m=sigma_m
@@ -385,13 +385,14 @@ def run_simple_integrate(params, experiments, reflections):
         allocate=False,
         flatten=False,
     )
-
+    imageset = experiment.imageset
+    frame0, frame1 = imageset.get_array_range()
     # Get actual shoebox values and the reflections for each image
     shoebox_processor = ShoeboxProcessor(
         predicted_reflections,
         len(experiment.detector),
-        0,
-        len(experiment.imageset),
+        frame0,
+        frame1,
         False,
     )
 
