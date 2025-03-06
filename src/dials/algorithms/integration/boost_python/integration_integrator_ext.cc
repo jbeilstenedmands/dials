@@ -332,7 +332,9 @@ namespace dials { namespace algorithms { namespace boost_python {
       .enable_pickling();
 
     class_<ShoeboxProcessorV2>("ShoeboxProcessorV2", no_init)
-      .def(init<af::reflection_table, std::size_t, int, int, bool>())
+      .def(init<af::reflection_table, std::size_t, int, int, bool,
+       const dxtbx::model::Scan&,const dxtbx::model::BeamBase&,
+       const dxtbx::model::Goniometer&,const dxtbx::model::Detector&, double,double>())
       .def("next", &ShoeboxProcessorV2::next<double>)
       .def("next", &ShoeboxProcessorV2::next<int>)
       .def("next_data_only", &ShoeboxProcessorV2::next_data_only<double>)
@@ -343,6 +345,8 @@ namespace dials { namespace algorithms { namespace boost_python {
       .def("nframes", &ShoeboxProcessorV2::nframes)
       .def("npanels", &ShoeboxProcessorV2::npanels)
       .def("finished", &ShoeboxProcessorV2::finished)
+      .def("finalise", &ShoeboxProcessorV2::finalise<double>)
+      .def("finalise", &ShoeboxProcessorV2::finalise<int>)
       .def("extract_time", &ShoeboxProcessorV2::extract_time)
       .def("process_time", &ShoeboxProcessorV2::process_time);
 

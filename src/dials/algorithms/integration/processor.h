@@ -10,7 +10,8 @@
  */
 #ifndef DIALS_ALGORITHMS_INTEGRATION_PROCESSOR_H
 #define DIALS_ALGORITHMS_INTEGRATION_PROCESSOR_H
-
+#include <scitbx/vec3.h>
+#include <scitbx/vec2.h>
 #include <string>
 #include <sstream>
 #include <iostream>
@@ -25,6 +26,11 @@
 #include <dials/array_family/reflection_table.h>
 #include <dxtbx/array_family/flex_table_suite.h>
 #include <dials/array_family/boost_python/reflection_table_suite.h>
+#include <dxtbx/model/beam.h>
+#include <dxtbx/model/detector.h>
+#include <dxtbx/model/scan.h>
+#include <dials/algorithms/profile_model/gaussian_rs/coordinate_system.h>
+
 
 namespace dials { namespace algorithms {
 
@@ -56,7 +62,13 @@ namespace dials { namespace algorithms {
                        std::size_t npanels,
                        int frame0,
                        int frame1,
-                       bool save)
+                       bool save,
+                       const dxtbx::model::Scan &scan,
+                       const dxtbx::model::BeamBase &beam,
+                       const dxtbx::model::Goniometer &gonio,
+                       const dxtbx::model::Detector &detector,
+                       const double delta_b,
+                       const double delta_m)
         : data_(data),
           extract_time_(0.0),
           process_time_(0.0),
@@ -65,15 +77,24 @@ namespace dials { namespace algorithms {
           frame0_(frame0),
           frame1_(frame1),
           frame_(frame0),
-          nframes_(frame1 - frame0) {
+          nframes_(frame1 - frame0),
+          phi0_(scan.get_oscillation()[0]),
+          dphi_(scan.get_oscillation()[1]),
+          s0_(beam.get_s0()),
+          m2_(gonio.get_rotation_axis()),
+          detector_(detector),
+          index0_(scan.get_array_range()[0]),
+          index1_(scan.get_array_range()[1]) {
+      delta_b_r2 = 1.0 / (std::pow(delta_b,2));
+      delta_m_r2 = 1.0 / (std::pow(delta_m,2));
       DIALS_ASSERT(frame0_ < frame1_);
       DIALS_ASSERT(npanels_ > 0);
       //DIALS_ASSERT(data.is_consistent());
       DIALS_ASSERT(data.contains("shoebox"));
       DIALS_ASSERT(data.size() > 0);
       af::const_ref<Shoebox<> > shoebox = data["shoebox"];
-      af::shared<int> total_intensity(data.size());
-      data["intensity_sum_value"] = total_intensity;
+      //af::shared<int> total_intensity(data.size());
+      //data["intensity_sum_value"] = total_intensity;
       std::size_t size = nframes_ * npanels_;
       std::vector<std::size_t> num(size, 0);
       std::vector<std::size_t> count(size, 0);
@@ -125,12 +146,16 @@ namespace dials { namespace algorithms {
       // For each image, extract shoeboxes of reflections recorded.
       // Allocate data where necessary
       af::ref<Shoebox<> > shoebox = data_["shoebox"];
-      af::shared<std::size_t> process_indices;
+      af::ref<vec3<double>> s1_vec = data_["s1"];
+      af::ref<vec3<double>> xyzcal_px = data_["xyzcal.px"];
+      double s0_length = s0_.length();
+      
+      //af::shared<std::size_t> process_indices;
       for (std::size_t p = 0; p < image.npanels(); ++p) {
         af::const_ref<std::size_t> ind = indices(frame_, p);
         af::const_ref<T, af::c_grid<2> > data = image.data(p);
         af::const_ref<bool, af::c_grid<2> > mask = image.mask(p);
-        //DIALS_ASSERT(data.accessor().all_eq(mask.accessor()));
+        DIALS_ASSERT(data.accessor().all_eq(mask.accessor()));
         for (std::size_t i = 0; i < ind.size(); ++i) {
           DIALS_ASSERT(ind[i] < shoebox.size());
           Shoebox<>& sbox = shoebox[ind[i]];
@@ -139,7 +164,7 @@ namespace dials { namespace algorithms {
             sbox.allocate();
           }*/ // Don't allocate
           int6 b = sbox.bbox;
-          int sbox_intensity = 0;
+          //int sbox_intensity = 0;
           // sbox_data_type sdata = sbox.data.ref();
           sbox_mask_type smask = sbox.mask.ref();
           DIALS_ASSERT(b[1] > b[0]);
@@ -154,8 +179,10 @@ namespace dials { namespace algorithms {
           int xs = x1 - x0;
           int ys = y1 - y0;
           int z = frame_ - z0;
-          int yi = (int)smask.accessor()[0];
-          int xi = (int)smask.accessor()[1];
+          int yi = (int)data.accessor()[0];
+          int xi = (int)data.accessor()[1];
+          //int yi = b[5] - b[4];
+          //int xi = b[3] - b[2];
           int xb = x0 >= 0 ? 0 : std::abs(x0);
           int yb = y0 >= 0 ? 0 : std::abs(y0);
           int xe = x1 <= xi ? xs : xs - (x1 - xi);
@@ -178,24 +205,104 @@ namespace dials { namespace algorithms {
               }
             }
           }*/
-          for (std::size_t y = yb; y < ye; ++y) {
-            for (std::size_t x = xb; x < xe; ++x) {
-              if (mask(y + y0, x + x0)) {
-                // FIXME add test on foreground/background.
-                if ((smask(z, y, x) & Foreground) == Foreground){
-                  sbox_intensity += data(y + y0, x + x0);
-                }
-                
+          //std::cout << "Processing " << b[0] << " " << b[1] << " " << b[2] << " " << b[3] << " " << b[4] << " " << b[5] <<std::endl;
+          //std::cout << frame_ << " " << frame0_ << std::endl;
+          const dxtbx::model::Panel &panel = detector_[p];
+          vec3<double> s1 = s1_vec[ind[i]];
+          double phi = phi0_ + (frame_ - index0_) * dphi_;
+          profile_model::gaussian_rs::CoordinateSystem cs(m2_, s0_, s1, phi);
+          vec2<double> shoebox_centroid_px = panel.get_ray_intersection_px(s1);
+          double attenuation_length = panel.attenuation_length(shoebox_centroid_px);
+          af::versa<double, af::c_grid<3> > dxyz_array(
+          af::c_grid<3>(2, ys + 1, xs + 1));
+          for (std::size_t k = 0; k < 2; ++k) {
+            int j=0;
+            for (std::size_t y = yb; y <= ye; ++y, ++j){
+              int i=0;
+              for (std::size_t x = xb; x <= xe; ++x, ++i){
+                //double x = x0 + i;  // + 0.5;
+                //double y = y0 + j;  // + 0.5;
+                // int z = z0 + k;
+                vec3<double> s1dash =
+                  panel.get_pixel_lab_coord(vec2<double>(x+x0, y+y0), attenuation_length)
+                    .normalize()
+                  * s0_length;
+                // nned to get epsilon 1.
+                // s1_dash = box.beam_vectors
+                //double phidash = phi0_ + (z0 + k - frame0_) * dphi_;
+                double phidash = phi0_ + (frame_ + k - frame0_) * dphi_;
+                vec3<double> epsilon_coords = cs.coords_from_s1vector(s1dash, phidash);
+                dxyz_array(k, j, i) =
+                  ((epsilon_coords[0] * epsilon_coords[0]
+                    + epsilon_coords[1] * epsilon_coords[1])
+                  * delta_b_r2)
+                  + ((epsilon_coords[2] * epsilon_coords[2]) * delta_m_r2);
+                // int mask_value = (d <= 1.0) ? Foreground : Background;
+                // mask(k, j, i) |= mask_value;
               }
+
+            }
+            /*    //for (int j = 0; j <= ys; ++j) {
+                //for (int i = 0; i <= xs; ++i) {
+                double x = x0 + i;  // + 0.5;
+                double y = y0 + j;  // + 0.5;
+                // int z = z0 + k;
+                vec3<double> s1dash =
+                  panel.get_pixel_lab_coord(vec2<double>(x, y), attenuation_length)
+                    .normalize()
+                  * s0_length;
+                // nned to get epsilon 1.
+                // s1_dash = box.beam_vectors
+                //double phidash = phi0_ + (z0 + k - frame0_) * dphi_;
+                double phidash = phi0_ + (frame_ + k - frame0_) * dphi_;
+                vec3<double> epsilon_coords = cs.coords_from_s1vector(s1dash, phidash);
+                dxyz_array(k, j, i) =
+                  ((epsilon_coords[0] * epsilon_coords[0]
+                    + epsilon_coords[1] * epsilon_coords[1])
+                  * delta_b_r2)
+                  + ((epsilon_coords[2] * epsilon_coords[2]) * delta_m_r2);
+                // int mask_value = (d <= 1.0) ? Foreground : Background;
+                // mask(k, j, i) |= mask_value;
+              }
+            }*/
+          }
+          int j=0;
+          for (std::size_t y = yb; y < ye; ++y, ++j) {
+            int i=0;
+            for (std::size_t x = xb; x < xe; ++x, ++i) {
+              double d1 = dxyz_array(0, j, i);
+              double d2 = dxyz_array(0, j + 1, i);
+              double d3 = dxyz_array(0, j, i + 1);
+              double d4 = dxyz_array(0, j + 1, i + 1);
+              double d5 = dxyz_array(1, j, i);
+              double d6 = dxyz_array(1, j + 1, i);
+              double d7 = dxyz_array(1, j, i + 1);
+              double d8 = dxyz_array(1, j + 1, i + 1);
+              double d = std::min(std::min(std::min(d1, d2), std::min(d3, d4)),
+                                  std::min(std::min(d5, d6), std::min(d7, d8)));
+              //std::cout << "d = " << d << std::endl;
+              //std::cout << "Coord " << x << " " << y << std::endl;
+              if (d <= 1.0){
+                sbox.total_intensity += data(y + y0, x + x0);
+              }
+              //sbox.total_intensity += data(y + y0, x + x0);
+              //std::cout << "Total I " << sbox.total_intensity << std::endl;
+              /*if (mask(y + y0, x + x0)) {
+                // FIXME add test on foreground/background.
+                //if ((smask(z, y, x) & Foreground) == Foreground){
+                //sbox.total_intensity += data(y + y0, x + x0);
+                //}
+                
+              }*/
               // sdata(z, y, x) = data(y + y0, x + x0);
               // smask(z, y, x) = mask(y + y0, x + x0) ? Valid : 0;
             }
           }
-          af::shared<int> total_intensity = data_["intensity_sum_value"];
-          total_intensity[ind[i]] += sbox_intensity;
-          if (frame_ == sbox.bbox[5] - 1) {
-            process_indices.push_back(ind[i]);
-          }
+          //af::shared<int> total_intensity = data_["intensity_sum_value"];
+          //total_intensity[ind[i]] += sbox_intensity;
+          //if (frame_ == sbox.bbox[5] - 1) {
+          //  process_indices.push_back(ind[i]);
+          //}
         }
       }
 
@@ -223,6 +330,17 @@ namespace dials { namespace algorithms {
 
       // Update the frame counter
       frame_++;
+    }
+
+    template <typename T>
+    af::shared<int> finalise(af::reflection_table data){
+      af::shared<int> total_intensity(data.size());
+      af::const_ref<Shoebox<> > shoebox = data["shoebox"];
+      for (int i=0;i<data.size();i++){
+        total_intensity[i] = shoebox[i].total_intensity;
+      }
+      return total_intensity;
+      //data["intensity_sum_value"] = total_intensity;
     }
 
     template <typename T>
@@ -420,6 +538,15 @@ namespace dials { namespace algorithms {
     std::size_t nframes_;
     std::vector<std::size_t> indices_;
     std::vector<std::size_t> offset_;
+    double phi0_;
+    double dphi_;
+    vec3<double> s0_;
+    vec3<double> m2_;
+    dxtbx::model::Detector detector_;
+    double delta_b_r2;
+    double delta_m_r2;
+    double index0_;
+    double index1_;
   };
 
   /**
@@ -645,6 +772,8 @@ namespace dials { namespace algorithms {
           int z = frame_ - z0;
           int yi = (int)data.accessor()[0];
           int xi = (int)data.accessor()[1];
+          //std::cout << yi << " " << xi << " " << b[1] - b[0] << " " << b[3] - b[2] << " " << b[5] - b[4] << std::endl;
+          
           int xb = x0 >= 0 ? 0 : std::abs(x0);
           int yb = y0 >= 0 ? 0 : std::abs(y0);
           int xe = x1 <= xi ? xs : xs - (x1 - xi);
@@ -669,6 +798,7 @@ namespace dials { namespace algorithms {
           } else {
             for (std::size_t y = yb; y < ye; ++y) {
               for (std::size_t x = xb; x < xe; ++x) {
+                std::cout << data(y + y0, x + x0) << std::endl;
                 sdata(z, y, x) = data(y + y0, x + x0);
                 smask(z, y, x) = mask(y + y0, x + x0) ? Valid : 0;
               }

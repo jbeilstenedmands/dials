@@ -25,7 +25,7 @@ from dials_algorithms_integration_integrator_ext import (
     JobList,
     ReflectionManager,
     ReflectionManagerPerImage,
-    ShoeboxProcessorV2,
+    ShoeboxProcessor,
 )
 
 try:
@@ -56,7 +56,7 @@ __all__ = [
     "ReflectionManager",
     "ReflectionManagerPerImage",
     "Shoebox",
-    "ShoeboxProcessorV2",
+    "ShoeboxProcessor",
     "Task",
 ]
 
@@ -451,7 +451,7 @@ class Task:
         )
 
         # Create the processor
-        processor = ShoeboxProcessorV2(
+        processor = ShoeboxProcessor(
             self.reflections,
             len(imageset.get_detector()),
             frame0,
