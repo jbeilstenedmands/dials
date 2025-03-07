@@ -19,7 +19,7 @@ from dials.util.options import ArgumentParser, reflections_and_experiments_from_
 from dials.util.phil import parse
 from dials.util.version import dials_version
 from dials_algorithms_integration_integrator_ext import (
-    ShoeboxProcessorV2, ShoeboxProcessor
+    ShoeboxProcessorV2,
 )
 
 logger = logging.getLogger("dials.command_line.simple_integrate")
@@ -356,7 +356,7 @@ def run_simple_integrate(params, experiments, reflections):
     # model_reflections.set_flags(
     #    ~success, model_reflections.flags.failed_during_background_modelling
     # )
-    '''sigma_m = ComputeEsdReflectingRange(
+    """sigma_m = ComputeEsdReflectingRange(
         experiment.crystal,
         experiment.beam,
         experiment.detector,
@@ -365,7 +365,7 @@ def run_simple_integrate(params, experiments, reflections):
         model_reflections,
         algorithm="extended",
     ).sigma()
-    print(sigma_b, sigma_m)'''
+    print(sigma_b, sigma_m)"""
     # assert 0
     # The Gaussian model given in 2.3 of Kabsch 2010
     experiment.profile = GaussianRSProfileModel(
@@ -395,8 +395,8 @@ def run_simple_integrate(params, experiments, reflections):
         allocate=False,
         flatten=False,
     )
-    n_sigma=3
-    '''from dials.algorithms.profile_model.gaussian_rs import MaskCalculator3D
+    n_sigma = 3
+    """from dials.algorithms.profile_model.gaussian_rs import MaskCalculator3D
         
     mask_foreground = MaskCalculator3D(
         experiment.beam,
@@ -411,15 +411,17 @@ def run_simple_integrate(params, experiments, reflections):
     mask_foreground(
         predicted_reflections["shoebox"], predicted_reflections["s1"],
         predicted_reflections["xyzcal.px"].parts()[2], predicted_reflections["panel"]
-    )'''
+    )"""
 
     # Get actual shoebox values and the reflections for each image
-    imageset= experiment.imageset
+    imageset = experiment.imageset
     frame0, frame1 = imageset.get_array_range()
     print(frame0, frame1)
-    #frame1 = 1000
-    #predicted_reflections = predicted_reflections.select(predicted_reflections["d"] > 4.0)
-    #predicted_reflections = predicted_reflections[100:110]
+    # frame1 = 1000
+    #
+    #
+    # predicted_reflections = predicted_reflections.select(predicted_reflections["d"] > 4.0)
+    # predicted_reflections = predicted_reflections[100:110]
     shoebox_processor = ShoeboxProcessorV2(
         predicted_reflections,
         len(experiment.detector),
@@ -434,14 +436,14 @@ def run_simple_integrate(params, experiments, reflections):
         sigma_m * n_sigma,
     )
 
-    for i in range(frame1-frame0):#len(experiment.imageset)):
+    for i in range(frame1 - frame0):  # len(experiment.imageset)):
         image = experiment.imageset.get_corrected_data(i)
         mask = experiment.imageset.get_mask(i)
         shoebox_processor.next(make_image(image, mask))
         print(i)
     intensity = shoebox_processor.finalise(predicted_reflections)
     predicted_reflections["intensity_sum_value"] = intensity
-    '''
+    """
     shoebox_processor = ShoeboxProcessor(
         predicted_reflections,
         len(experiment.detector),
@@ -471,7 +473,7 @@ def run_simple_integrate(params, experiments, reflections):
     centroid_algorithm = SimpleCentroidExt(params=None, experiments=experiments)
     centroid_algorithm.compute_centroid(predicted_reflections)
 
-    predicted_reflections.compute_summed_intensity()'''
+    predicted_reflections.compute_summed_intensity()"""
     print("done")
     predicted_reflections.as_file("test.refl")
 

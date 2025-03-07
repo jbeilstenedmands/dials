@@ -22,6 +22,7 @@
 #include <dials/model/data/mask_code.h>
 #include <dials/config.h>
 #include <dials/error.h>
+#include <unordered_map>
 
 namespace dials { namespace model {
 
@@ -64,7 +65,8 @@ namespace dials { namespace model {
   template <typename FloatType = ProfileFloatType>
   struct Shoebox {
     typedef FloatType float_type;
-    int total_intensity{0};
+    double total_intensity{0};
+    std::unordered_map<int, int> background_hist;
     std::size_t panel;                                ///< The detector panel
     int6 bbox;                                        ///< The bounding box
     bool flat;                                        ///< Is the shoebox flat
