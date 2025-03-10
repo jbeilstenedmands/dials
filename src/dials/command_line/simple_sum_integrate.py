@@ -19,6 +19,7 @@ from dials.util.options import ArgumentParser, reflections_and_experiments_from_
 from dials.util.phil import parse
 from dials.util.version import dials_version
 from dials_algorithms_integration_integrator_ext import (
+    ShoeboxProcessor,
     ShoeboxProcessorV2,
 )
 
@@ -397,7 +398,7 @@ def run_simple_integrate(params, experiments, reflections):
     )
     n_sigma = 3
     """from dials.algorithms.profile_model.gaussian_rs import MaskCalculator3D
-        
+
     mask_foreground = MaskCalculator3D(
         experiment.beam,
         experiment.detector,
@@ -416,84 +417,73 @@ def run_simple_integrate(params, experiments, reflections):
     # Get actual shoebox values and the reflections for each image
     imageset = experiment.imageset
     frame0, frame1 = imageset.get_array_range()
-    print(frame0, frame1)
-    # frame1 = 1000
-    #
-    #
-    # predicted_reflections = predicted_reflections.select(predicted_reflections["d"] > 4.0)
-    # predicted_reflections = predicted_reflections[100:110]
-    shoebox_processor = ShoeboxProcessorV2(
-        predicted_reflections,
-        len(experiment.detector),
-        frame0,
-        frame1,
-        False,
-        experiment.scan,
-        experiment.beam,
-        experiment.goniometer,
-        experiment.detector,
-        sigma_b * n_sigma,
-        sigma_m * n_sigma,
-    )
+    use_subrange = False
+    use_new_method = False
+    if use_subrange:
+        frame1 = 1000
+        predicted_reflections = predicted_reflections.select(
+            predicted_reflections["d"] > 4.0
+        )
+        predicted_reflections = predicted_reflections[100:110]
+    if use_new_method:
+        shoebox_processor = ShoeboxProcessorV2(
+            predicted_reflections,
+            len(experiment.detector),
+            frame0,
+            frame1,
+            False,
+            experiment.scan,
+            experiment.beam,
+            experiment.goniometer,
+            experiment.detector,
+            sigma_b * n_sigma,
+            sigma_m * n_sigma,
+        )
 
-    for i in range(frame1 - frame0):  # len(experiment.imageset)):
-        image = experiment.imageset.get_corrected_data(i)
-        mask = experiment.imageset.get_mask(i)
-        shoebox_processor.next(make_image(image, mask))
-        print(i)
-    intensity = shoebox_processor.finalise(predicted_reflections)
-    predicted_reflections["intensity_sum_value"] = intensity
-    """
-    shoebox_processor = ShoeboxProcessor(
-        predicted_reflections,
-        len(experiment.detector),
-        frame0,
-        frame1,
-        False,
-    )
+        for i in range(frame1 - frame0):  # len(experiment.imageset)):
+            image = experiment.imageset.get_corrected_data(i)
+            mask = experiment.imageset.get_mask(i)
+            shoebox_processor.next(make_image(image, mask))
+            print(i)
+        intensity = shoebox_processor.finalise(predicted_reflections)
+        predicted_reflections["intensity_sum_value"] = intensity
+    else:
+        shoebox_processor = ShoeboxProcessor(
+            predicted_reflections,
+            len(experiment.detector),
+            frame0,
+            frame1,
+            False,
+        )
 
-    for i in range(frame1-frame0):#len(experiment.imageset)):
-        image = experiment.imageset.get_corrected_data(i)
-        mask = experiment.imageset.get_mask(i)
-        shoebox_processor.next(make_image(image, mask))
-        print(i)
-    predicted_reflections.is_overloaded(experiments)
-    predicted_reflections.compute_mask(experiments)
-    predicted_reflections.contains_invalid_pixels()
-    from dials.extensions.simple_background_ext import SimpleBackgroundExt
-    from dials.extensions.simple_centroid_ext import SimpleCentroidExt
-    # Background calculated explicitly to expose underlying algorithm
-    background_algorithm = SimpleBackgroundExt(params=None, experiments=experiments)
-    success = background_algorithm.compute_background(predicted_reflections)
-    predicted_reflections.set_flags(
-        ~success, predicted_reflections.flags.failed_during_background_modelling
-    )
+        for i in range(frame1 - frame0):  # len(experiment.imageset)):
+            image = experiment.imageset.get_corrected_data(i)
+            mask = experiment.imageset.get_mask(i)
+            shoebox_processor.next_data_only(make_image(image, mask))
+            print(i)
+        predicted_reflections.is_overloaded(experiments)
+        predicted_reflections.compute_mask(experiments)
+        predicted_reflections.contains_invalid_pixels()
+        from dials.extensions.simple_background_ext import SimpleBackgroundExt
+        from dials.extensions.simple_centroid_ext import SimpleCentroidExt
 
-    # Centroids calculated explicitly to expose underlying algorithm
-    centroid_algorithm = SimpleCentroidExt(params=None, experiments=experiments)
-    centroid_algorithm.compute_centroid(predicted_reflections)
+        # Background calculated explicitly to expose underlying algorithm
+        background_algorithm = SimpleBackgroundExt(params=None, experiments=experiments)
+        success = background_algorithm.compute_background(predicted_reflections)
+        predicted_reflections.set_flags(
+            ~success, predicted_reflections.flags.failed_during_background_modelling
+        )
 
-    predicted_reflections.compute_summed_intensity()"""
+        # Centroids calculated explicitly to expose underlying algorithm
+        centroid_algorithm = SimpleCentroidExt(params=None, experiments=experiments)
+        centroid_algorithm.compute_centroid(predicted_reflections)
+
+        predicted_reflections.compute_summed_intensity()
     print("done")
     predicted_reflections.as_file("test.refl")
 
-    """predicted_reflections.is_overloaded(experiments)
-    predicted_reflections.compute_mask(experiments)
-    predicted_reflections.contains_invalid_pixels()
-
-    # Background calculated explicitly to expose underlying algorithm
-    background_algorithm = SimpleBackgroundExt(params=None, experiments=experiments)
-    success = background_algorithm.compute_background(predicted_reflections)
-    predicted_reflections.set_flags(
-        ~success, predicted_reflections.flags.failed_during_background_modelling
-    )
-
-    # Centroids calculated explicitly to expose underlying algorithm
-    centroid_algorithm = SimpleCentroidExt(params=None, experiments=experiments)
-    centroid_algorithm.compute_centroid(predicted_reflections)
-
-    predicted_reflections.compute_summed_intensity()
-
+    '''
+    """
     # Filter reflections with a high fraction of masked foreground
     valid_foreground_threshold = 0.75  # DIALS default
     sboxs = predicted_reflections["shoebox"]
@@ -519,7 +509,7 @@ def run_simple_integrate(params, experiments, reflections):
     do the actual profile fitting integration.
     """
 
-    '''# Default params when running dials.integrate with C2sum_1_*.cbf.gz
+    # Default params when running dials.integrate with C2sum_1_*.cbf.gz
     fit_method = 1  # reciprocal space fitter (called explicitly below)
     grid_method = 2  # regular grid
     grid_size = 5  # Downsampling grid size described in 3.3 of Kabsch 2010
