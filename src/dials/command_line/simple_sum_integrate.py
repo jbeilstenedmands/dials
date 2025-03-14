@@ -417,8 +417,8 @@ def run_simple_integrate(params, experiments, reflections):
     # Get actual shoebox values and the reflections for each image
     imageset = experiment.imageset
     frame0, frame1 = imageset.get_array_range()
-    use_subrange = False
-    use_new_method = False
+    use_subrange = True
+    use_new_method = True
     if use_subrange:
         frame1 = 1000
         predicted_reflections = predicted_reflections.select(
@@ -426,6 +426,21 @@ def run_simple_integrate(params, experiments, reflections):
         )
         predicted_reflections = predicted_reflections[100:110]
     if use_new_method:
+        # nb overlap adjacency list for each image separately?
+        # ideal efficient algorithm
+        # make a transform spec for profile mapping.
+        # for each reflection make a coordinatesystem object (kabsch coord system).
+        # for each image, for each refl:
+        # calculate dxyz array for slice of pixels based on pixel indices.
+        # initialise background accumulator if first slice.
+        # check for overlapping regions, calculate dxyz to relevant neighbouring reflections.
+        # iterate though pixels:
+        #   first check if valid pixel, then
+        #   if overlapping pixel, check if foreground to overlap, else skip to determine if foreground or background.
+        #      if overlapping fg, skip, else determine if background or foreground for our refl.
+        #          if background, add to background accumulator: (pixel, i,j,k) - for constant3d, ignores pixels and if int just stores in efficient histogram.
+        #          else add to foreground accumulator - sum just sums, profile modeller maps based on coordinate system and transform.
+        #
         shoebox_processor = ShoeboxProcessorV2(
             predicted_reflections,
             len(experiment.detector),
