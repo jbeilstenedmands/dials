@@ -30,7 +30,7 @@
 #include <dxtbx/model/detector.h>
 #include <dxtbx/model/scan.h>
 #include <dials/algorithms/profile_model/gaussian_rs/coordinate_system.h>
-
+#include <iomanip>
 namespace dials { namespace algorithms {
 
   using dials::model::Foreground;
@@ -165,7 +165,7 @@ namespace dials { namespace algorithms {
           int6 b = sbox.bbox;
           // int sbox_intensity = 0;
           //  sbox_data_type sdata = sbox.data.ref();
-          sbox_mask_type smask = sbox.mask.ref();
+          //sbox_mask_type smask = sbox.mask.ref();
           DIALS_ASSERT(b[1] > b[0]);
           DIALS_ASSERT(b[3] > b[2]);
           DIALS_ASSERT(b[5] > b[4]);
@@ -180,15 +180,13 @@ namespace dials { namespace algorithms {
           int z = frame_ - z0;
           int yi = (int)data.accessor()[0];
           int xi = (int)data.accessor()[1];
-          // int yi = b[5] - b[4];
-          // int xi = b[3] - b[2];
           int xb = x0 >= 0 ? 0 : std::abs(x0);
           int yb = y0 >= 0 ? 0 : std::abs(y0);
           int xe = x1 <= xi ? xs : xs - (x1 - xi);
           int ye = y1 <= yi ? ys : ys - (y1 - yi);
-          if (yb >= ye || xb >= xe) {
+          /*if (yb >= ye || xb >= xe) {
             continue;
-          }
+          }*/
           DIALS_ASSERT(yb >= 0 && ye <= ys);
           DIALS_ASSERT(xb >= 0 && xe <= xs);
           DIALS_ASSERT(yb + y0 >= 0 && ye + y0 <= yi);
@@ -209,16 +207,22 @@ namespace dials { namespace algorithms {
           // << frame0_ << std::endl;
           const dxtbx::model::Panel& panel = detector_[p];
           vec3<double> s1 = s1_vec[ind[i]];
-          double phi = phi0_ + (frame_ - index0_) * dphi_;
+          vec3<double> xyzcal = xyzcal_px[ind[i]];
+          double phi = phi0_ + (xyzcal[2] - index0_) * dphi_;
           profile_model::gaussian_rs::CoordinateSystem cs(m2_, s0_, s1, phi);
           vec2<double> shoebox_centroid_px = panel.get_ray_intersection_px(s1);
           double attenuation_length = panel.attenuation_length(shoebox_centroid_px);
+          bool print_out = false;
+          if ((b[0] == 213) && (b[1] ==227) && (b[2] == 1219) && (b[3] == 1229) &&(b[4] == 284) && (b[5] == 626)){
+            std::cout << "attenuation length ,phi " << attenuation_length << " " << phi << std::endl;
+            //print_out = true;
+          }
           af::versa<double, af::c_grid<3>> dxyz_array(af::c_grid<3>(2, ys + 1, xs + 1));
           for (std::size_t k = 0; k < 2; ++k) {
             int j = 0;
             for (std::size_t y = yb; y <= ye; ++y, ++j) {
-              int i = 0;
-              for (std::size_t x = xb; x <= xe; ++x, ++i) {
+              int m = 0;
+              for (std::size_t x = xb; x <= xe; ++x, ++m) {
                 // double x = x0 + i;  // + 0.5;
                 // double y = y0 + j;  // + 0.5;
                 //  int z = z0 + k;
@@ -228,16 +232,23 @@ namespace dials { namespace algorithms {
                                          attenuation_length)
                     .normalize()
                   * s0_length;
+                /*if (print_out){
+                  std::cout << "s1dash" << std::endl;
+                  std::cout << std::setprecision(12) << s1dash[0] << " " <<s1dash[1] << " " <<s1dash[2] << std::endl;
+                }*/
                 // nned to get epsilon 1.
                 // s1_dash = box.beam_vectors
                 // double phidash = phi0_ + (z0 + k - frame0_) * dphi_;
                 double phidash = phi0_ + (frame_ + k - frame0_) * dphi_;
                 vec3<double> epsilon_coords = cs.coords_from_s1vector(s1dash, phidash);
-                dxyz_array(k, j, i) =
+                dxyz_array(k, j, m) =
                   ((epsilon_coords[0] * epsilon_coords[0]
                     + epsilon_coords[1] * epsilon_coords[1])
                    * delta_b_r2)
                   + ((epsilon_coords[2] * epsilon_coords[2]) * delta_m_r2);
+                if (print_out){
+                  std::cout << std::setprecision(12) << dxyz_array(k, j, m) << std::endl;
+                }
                 // int mask_value = (d <= 1.0) ? Foreground : Background;
                 // mask(k, j, i) |= mask_value;
               }
@@ -268,33 +279,48 @@ namespace dials { namespace algorithms {
           }
           int j = 0;
           for (std::size_t y = yb; y < ye; ++y, ++j) {
-            int i = 0;
-            for (std::size_t x = xb; x < xe; ++x, ++i) {
-              double d1 = dxyz_array(0, j, i);
-              double d2 = dxyz_array(0, j + 1, i);
-              double d3 = dxyz_array(0, j, i + 1);
-              double d4 = dxyz_array(0, j + 1, i + 1);
-              double d5 = dxyz_array(1, j, i);
-              double d6 = dxyz_array(1, j + 1, i);
-              double d7 = dxyz_array(1, j, i + 1);
-              double d8 = dxyz_array(1, j + 1, i + 1);
+            int m = 0;
+            for (std::size_t x = xb; x < xe; ++x, ++m) {
+              
+              double d1 = dxyz_array(0, j, m);
+              double d2 = dxyz_array(0, j + 1, m);
+              double d3 = dxyz_array(0, j, m + 1);
+              double d4 = dxyz_array(0, j + 1, m + 1);
+              double d5 = dxyz_array(1, j, m);
+              double d6 = dxyz_array(1, j + 1, m);
+              double d7 = dxyz_array(1, j, m+1);
+              double d8 = dxyz_array(1, j + 1, m + 1);
               double d = std::min(std::min(std::min(d1, d2), std::min(d3, d4)),
                                   std::min(std::min(d5, d6), std::min(d7, d8)));
               // std::cout << "d = " << d << std::endl;
               // std::cout << "Coord " << x << " " << y << std::endl;
-              if (d <= 1.0) {
-                sbox.total_intensity += data(y + y0, x + x0);
+              if (d <= 1.0) { // Is foreground
+                if (mask(y + y0, x + x0)){ // If pixel not masked on image
+                  sbox.total_intensity += data(y + y0, x + x0);
+                  sbox.n_valid_fg += 1;
+                }
+                else {
+                  sbox.masked_image_pixel = true;
+                  sbox.n_invalid_fg += 1;
+                }
               } else {
                 // to make more efficient, fill in histogram between a min and max?
                 // stop once got to n entries?
-                int this_pixel = data(y + y0, x + x0);
-                if (auto search = sbox.background_hist.find(this_pixel);
-                    search != sbox.background_hist.end()) {
-                  sbox.background_hist[this_pixel] += 1;
-                } else {
-                  sbox.background_hist[this_pixel] = 1;
+                if (mask(y + y0, x + x0)){
+                  sbox.n_valid_bg += 1;
+                  int this_pixel = data(y + y0, x + x0);
+                  if (auto search = sbox.background_hist.find(this_pixel);
+                      search != sbox.background_hist.end()) {
+                    sbox.background_hist[this_pixel] += 1;
+                  } else {
+                    sbox.background_hist[this_pixel] = 1;
+                  }
+                }
+                else {
+                  sbox.n_invalid_bg += 1;
                 }
               }
+              
               // sbox.total_intensity += data(y + y0, x + x0);
               // std::cout << "Total I " << sbox.total_intensity << std::endl;
               /*if (mask(y + y0, x + x0)) {
@@ -346,8 +372,21 @@ namespace dials { namespace algorithms {
     af::shared<int> finalise(af::reflection_table data) {
       af::shared<int> total_intensity(data.size());
       af::const_ref<Shoebox<>> shoebox = data["shoebox"];
+      af::shared<bool> success = data["summation_success"];
+      af::shared<int> nbg = data["num_pixels.background"];
+      af::shared<int> bg_used = data["num_pixels.background_used"];
+      af::shared<int> foreground = data["num_pixels.foreground"];
+      af::shared<int> valid = data["num_pixels.valid"];
       for (int i = 0; i < data.size(); i++) {
         total_intensity[i] = shoebox[i].total_intensity;
+        if (shoebox[i].n_invalid_fg > 0){
+          success[i] = false;
+        }
+        nbg[i] = shoebox[i].n_valid_bg;
+        //bg_used[i] = shoebox[i].n_valid_bg;
+        foreground[i] = shoebox[i].n_valid_fg;
+        valid[i] = shoebox[i].n_valid_bg + shoebox[i].n_valid_fg;
+
         /*int bg_size = shoebox[i].background_hist.size();
         std::cout << "Number of elements in bg hist: " << bg_size << std::endl;
         std::cout << "Number of elements in shoebox: " << ((shoebox[i].bbox[1] -
@@ -372,111 +411,7 @@ namespace dials { namespace algorithms {
       typedef af::ref<int, af::c_grid<3>> sbox_mask_type;
       DIALS_ASSERT(frame_ >= frame0_ && frame_ < frame1_);
       DIALS_ASSERT(image.npanels() == npanels_);
-
-      // Get the initial time
-      double start_time = timestamp();
-
-      // For each image, extract shoeboxes of reflections recorded.
-      // Allocate data where necessary
-      af::ref<Shoebox<>> shoebox = data_["shoebox"];
-      af::shared<std::size_t> process_indices;
-      for (std::size_t p = 0; p < image.npanels(); ++p) {
-        af::const_ref<std::size_t> ind = indices(frame_, p);
-        af::const_ref<T, af::c_grid<2>> data = image.data(p);
-        af::const_ref<bool, af::c_grid<2>> mask = image.mask(p);
-        DIALS_ASSERT(data.accessor().all_eq(mask.accessor()));
-        for (std::size_t i = 0; i < ind.size(); ++i) {
-          DIALS_ASSERT(ind[i] < shoebox.size());
-          Shoebox<>& sbox = shoebox[ind[i]];
-          /*if (frame_ == sbox.bbox[4]) {
-            DIALS_ASSERT(sbox.is_allocated() == false);
-            sbox.allocate();
-          }*/ // Don't allocate
-          int6 b = sbox.bbox;
-          int sbox_intensity = 0;
-          // sbox_data_type sdata = sbox.data.ref();
-          sbox_mask_type smask = sbox.mask.ref();
-          DIALS_ASSERT(b[1] > b[0]);
-          DIALS_ASSERT(b[3] > b[2]);
-          DIALS_ASSERT(b[5] > b[4]);
-          DIALS_ASSERT(frame_ >= b[4] && frame_ < b[5]);
-          int x0 = b[0];
-          int x1 = b[1];
-          int y0 = b[2];
-          int y1 = b[3];
-          int z0 = b[4];
-          int xs = x1 - x0;
-          int ys = y1 - y0;
-          int z = frame_ - z0;
-          int yi = (int)data.accessor()[0];
-          int xi = (int)data.accessor()[1];
-          int xb = x0 >= 0 ? 0 : std::abs(x0);
-          int yb = y0 >= 0 ? 0 : std::abs(y0);
-          int xe = x1 <= xi ? xs : xs - (x1 - xi);
-          int ye = y1 <= yi ? ys : ys - (y1 - yi);
-          if (yb >= ye || xb >= xe) {
-            continue;
-          }
-          DIALS_ASSERT(yb >= 0 && ye <= ys);
-          DIALS_ASSERT(xb >= 0 && xe <= xs);
-          DIALS_ASSERT(yb + y0 >= 0 && ye + y0 <= yi);
-          DIALS_ASSERT(xb + x0 >= 0 && xe + x0 <= xi);
-          // DIALS_ASSERT(sbox.is_consistent());
-          /*if (flatten_) {
-            for (std::size_t y = yb; y < ye; ++y) {
-              for (std::size_t x = xb; x < xe; ++x) {
-                sdata(0, y, x) += data(y + y0, x + x0);
-                bool sv = smask(0, y, x) & Valid;
-                bool mv = mask(y + y0, x + x0);
-                smask(0, y, x) = (mv && (z == 0 ? true : sv) ? Valid : 0);
-              }
-            }
-          }*/
-          for (std::size_t y = yb; y < ye; ++y) {
-            for (std::size_t x = xb; x < xe; ++x) {
-              if (mask(y + y0, x + x0)) {
-                // FIXME add test on foreground/background.
-                if ((smask(z, y, x) & Foreground) == Foreground) {
-                  sbox_intensity += data(y + y0, x + x0);
-                }
-                // sbox_intensity += data(y + y0, x + x0);
-              }
-              // sdata(z, y, x) = data(y + y0, x + x0);
-              // smask(z, y, x) = mask(y + y0, x + x0) ? Valid : 0;
-            }
-          }
-          af::shared<int> total_intensity = data_["intensity_sum_value"];
-          total_intensity[ind[i]] += sbox_intensity;
-          if (frame_ == sbox.bbox[5] - 1) {
-            process_indices.push_back(ind[i]);
-          }
-        }
-      }
-
-      // Update timing info
-      double end_time = timestamp();
-      extract_time_ += end_time - start_time;
-
-      // Process all the reflections and set the reflections
-      /*if (process_indices.size() > 0) {
-        double start_time = timestamp();
-        af::const_ref<std::size_t> ind = process_indices.const_ref();
-        af::reflection_table reflections = select_rows_index(data_, ind);
-        // For now, just set the total intensity
-
-        //executor.process(frame_, reflections);
-        set_selected_rows_index(data_, ind, reflections);
-        if (!save_) {
-          for (std::size_t i = 0; i < ind.size(); ++i) {
-            shoebox[ind[i]].deallocate();
-          }
-        } // Didn't allocate, so don't need to deallocate.
-        double end_time = timestamp();
-        process_time_ += end_time - start_time;
-      }*/
-
-      // Update the frame counter
-      frame_++;
+      next(image);
     }
 
     /** @returns The first frame.  */

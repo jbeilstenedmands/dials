@@ -466,9 +466,11 @@ class Task:
             image = imageset.get_corrected_data(i)
             if imageset.is_marked_for_rejection(i):
                 mask = tuple(flex.bool(im.accessor(), False) for im in image)
+                print(f"Imageset frame {i} marked for rejection")
             else:
                 mask = imageset.get_mask(i)
                 if self.params.lookup.mask is not None:
+                    print("Lookup.mask is not none")
                     assert len(mask) == len(self.params.lookup.mask), (
                         "Mask/Image are incorrect size %d %d"
                         % (
@@ -481,7 +483,8 @@ class Task:
                     )
 
             read_time += time() - st
-            processor.next(make_image(image, mask), self.executor)
+            print(i)
+            processor.next_data_only(make_image(image, mask))
             del image
             del mask
         assert processor.finished(), "Data processor is not finished"
@@ -500,9 +503,10 @@ class Task:
                 output.as_file("shoeboxes_%d.refl" % self.index)
 
         # Delete the shoeboxes
+        self.executor.process(0, self.reflections)
         if self.params.debug.separate_files or not self.params.debug.output:
             del self.reflections["shoebox"]
-
+        
         # Finalize the executor
         self.executor.finalize()
 

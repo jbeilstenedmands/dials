@@ -971,8 +971,6 @@ class InFlightIntegrator:
         assert all(p.get_pedestal() == 0.0 for p in detector.iter_panels())
         from dials.extensions.auto_background_ext import AutoBackgroundExt
         from dials.extensions.glm_background_ext import GLMBackgroundExt
-
-        # assert params.integration.background.algorithm == "glm"
         assert params.integration.background.glm.model.algorithm == "constant3d"
         assert (
             reflections.background_algorithm.func == AutoBackgroundExt
@@ -1025,6 +1023,13 @@ class InFlightIntegrator:
         logger.info("")
         logger.info(heading("Integrating reflections"))
         logger.info("")
+        print(self.reflections.size())
+        mask = (
+            flex.abs(self.reflections["zeta"]) < 0.05
+        )
+        self.reflections = self.reflections.select(~mask)
+        print(mask.count(True))
+        print(self.reflections.size())
 
         ## would call Processor3D, which calls the manager...
         self.reflections.compute_partiality(self.experiments)
@@ -1044,7 +1049,7 @@ class InFlightIntegrator:
         n_sigma = 3  # self.params.profile.gaussian_rs.parameters.n_sigma
         from dials.model.data import make_image
         from dials_algorithms_integration_integrator_ext import ShoeboxProcessorV2
-
+        self.reflections["summation_success"] = flex.bool(self.reflections.size(), True)
         shoebox_processor = ShoeboxProcessorV2(
             self.reflections,
             len(self.experiments[0].detector),
@@ -1059,18 +1064,30 @@ class InFlightIntegrator:
             sigma_m * n_sigma,
         )
 
-        for i in range(frame1 - frame0):  # len(experiment.imageset)):
+        for i in range(len(imageset)):  # len(experiment.imageset)):
             image = experiment.imageset.get_corrected_data(i)
-            mask = experiment.imageset.get_mask(i)
+            if imageset.is_marked_for_rejection(i):
+                mask = tuple(flex.bool(im.accessor(), False) for im in image)
+            else:
+                mask = imageset.get_mask(i)
             shoebox_processor.next(make_image(image, mask))
             print(i)
-
+        self.reflections["num_pixels.foreground"] = flex.int(self.reflections.size(), 0)
+        self.reflections["num_pixels.background"] = flex.int(self.reflections.size(), 0)
+        self.reflections["num_pixels.background_used"] = flex.int(self.reflections.size(), 0)
+        self.reflections["num_pixels.valid"] = flex.int(self.reflections.size(), 0)
         intensity = shoebox_processor.finalise(self.reflections)
         self.reflections["intensity.sum.value"] = intensity.as_double()
         self.reflections["intensity.sum.variance"] = intensity.as_double()
+        n_failed = (self.reflections["summation_success"] == False).count(True)
+        logger.info(f"{n_failed} reflections failed in summation integration")
         self.reflections.set_flags(
-            flex.bool(self.reflections.size(), True),
+            self.reflections["summation_success"],
             self.reflections.flags.integrated_sum,
+        )
+        self.reflections.set_flags(
+            ~self.reflections["summation_success"],
+            self.reflections.flags.foreground_includes_bad_pixels,
         )
         # ignore overlaps filter
         self.reflections.compute_corrections(self.experiments)

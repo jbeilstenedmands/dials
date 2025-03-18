@@ -23,7 +23,8 @@
 #include <dials/algorithms/profile_model/gaussian_rs/coordinate_system.h>
 #include <dials/algorithms/shoebox/mask_code.h>
 #include <dials/error.h>
-
+#include <iostream>
+#include <iomanip>
 namespace dials {
   namespace algorithms {
     namespace profile_model {
@@ -56,6 +57,7 @@ namespace dials {
                         vec3<double> s1,
                         double frame,
                         std::size_t panel,
+                        int index,
                         bool adjacent = false) const = 0;
 
     virtual void array(af::ref<Shoebox<> > shoebox,
@@ -152,12 +154,13 @@ namespace dials {
                         vec3<double> s1,
                         double frame,
                         std::size_t panel,
+                        int index,
                         bool adjacent = false) const {
       //DIALS_ASSERT(shoebox.is_consistent());
       if (shoebox.flat) {
         single_flat(shoebox, s1, frame, panel);
       } else {
-        single_normal(shoebox, s1, frame, panel, adjacent);
+        single_normal(shoebox, s1, frame, panel, index, adjacent);
       }
     }
 
@@ -176,7 +179,7 @@ namespace dials {
       DIALS_ASSERT(shoeboxes.size() == frame.size());
       DIALS_ASSERT(shoeboxes.size() == panel.size());
       for (std::size_t i = 0; i < shoeboxes.size(); ++i) {
-        this->single(shoeboxes[i], s1[i], frame[i], panel[i]);
+        this->single(shoeboxes[i], s1[i], frame[i], panel[i], (int)i);
       }
     }
 
@@ -309,6 +312,7 @@ namespace dials {
                        vec3<double> s1,
                        double frame,
                        std::size_t panel_number,
+                       int index_in_array,
                        bool adjacent = false) const {
       // Get some bits from the shoebox
       af::ref<int, af::c_grid<3> > mask = shoebox.mask.ref();
@@ -364,6 +368,11 @@ namespace dials {
 
       vec2<double> shoebox_centroid_px = panel.get_ray_intersection_px(s1);
       double attenuation_length = panel.attenuation_length(shoebox_centroid_px);
+      bool print_out = false;
+      if ((bbox[0] == 213) && (bbox[1] ==227) && (bbox[2] == 1219) && (bbox[3] == 1229) &&(bbox[4] == 284) && (bbox[5] == 626)){
+        std::cout << "attenuation length ,phi " << attenuation_length << " " << phi << std::endl;
+        print_out = true;
+      }
       af::versa<double, af::c_grid<3> > dxyz_array(
         af::c_grid<3>(zsize + 1, ysize + 1, xsize + 1));
 
@@ -377,6 +386,10 @@ namespace dials {
               panel.get_pixel_lab_coord(vec2<double>(x, y), attenuation_length)
                 .normalize()
               * s0_length;
+            /*if (print_out){
+              std::cout << "s1dash" << std::endl;
+              std::cout << std::setprecision(12) << s1dash[0] << " " <<s1dash[1] << " " <<s1dash[2] << std::endl;
+            }*/
             // nned to get epsilon 1.
             // s1_dash = box.beam_vectors
             double phidash = phi0_ + (z0 + k - index0_) * dphi_;
@@ -386,6 +399,9 @@ namespace dials {
                 + epsilon_coords[1] * epsilon_coords[1])
                * delta_b_r2)
               + ((epsilon_coords[2] * epsilon_coords[2]) * delta_m_r2);
+            if (print_out){
+              std::cout << std::setprecision(12) << dxyz_array(k, j, i) << std::endl;
+            }
             // int mask_value = (d <= 1.0) ? Foreground : Background;
             // mask(k, j, i) |= mask_value;
           }
@@ -583,6 +599,7 @@ namespace dials {
                         vec3<double> s1,
                         double frame,
                         std::size_t panel_number,
+                        int index_in_array,
                         bool adjacent = false) const {
       DIALS_ASSERT(shoebox.is_consistent());
       // Get some bits from the shoebox
@@ -655,7 +672,7 @@ namespace dials {
       DIALS_ASSERT(shoeboxes.size() == frame.size());
       DIALS_ASSERT(shoeboxes.size() == panel.size());
       for (std::size_t i = 0; i < shoeboxes.size(); ++i) {
-        this->single(shoeboxes[i], s1[i], frame[i], panel[i]);
+        this->single(shoeboxes[i], s1[i], frame[i], panel[i], (int)i);
       }
     }
 
@@ -796,7 +813,7 @@ namespace dials {
       DIALS_ASSERT(shoeboxes.size() == panel.size());
       for (std::size_t i = 0; i < shoeboxes.size(); ++i) {
         DIALS_ASSERT(id[i] < size());
-        compute_[id[i]]->single(shoeboxes[i], s1[i], frame[i], panel[i]);
+        compute_[id[i]]->single(shoeboxes[i], s1[i], frame[i], panel[i], (int)i);
       }
     }
 

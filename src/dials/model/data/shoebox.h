@@ -66,6 +66,11 @@ namespace dials { namespace model {
   struct Shoebox {
     typedef FloatType float_type;
     double total_intensity{0};
+    int n_valid_fg{0};
+    int n_invalid_fg{0};
+    int n_valid_bg{0};
+    int n_invalid_bg{0};
+    bool masked_image_pixel{false};
     std::unordered_map<int, int> background_hist;
     std::size_t panel;                                ///< The detector panel
     int6 bbox;                                        ///< The bounding box

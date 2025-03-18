@@ -558,7 +558,7 @@ class Model(ProfileModelExt):
         mask_foreground = MaskCalculator(
             crystal, beam, detector, goniometer, scan, delta_b, delta_m
         )
-
+        print("About to mask")
         # Mask the foreground region
         if image_volume is None:
             return mask_foreground(

@@ -36,5 +36,7 @@ def sum_integrate_and_update_table(
     reflections["background.sum.value"] = intensity.background_value()
     reflections["background.sum.variance"] = intensity.background_variance()
     success = intensity.observed_success()
+    print("setting integrated_sum:")
+    print(success.count(True))
     reflections.set_flags(success, reflections.flags.integrated_sum)
     return success
