@@ -408,21 +408,23 @@ namespace dials {
         }
       }
 
-      for (int k = 0; k < zsize; k++) {
+      for (int k = 0; k < zsize; ++k) {
         for (int j = 0; j < ysize; ++j) {
           for (int i = 0; i < xsize; ++i) {
-            double d1 = dxyz_array(k, j, i);
-            double d2 = dxyz_array(k, j + 1, i);
-            double d3 = dxyz_array(k, j, i + 1);
-            double d4 = dxyz_array(k, j + 1, i + 1);
-            double d5 = dxyz_array(k + 1, j, i);
-            double d6 = dxyz_array(k + 1, j + 1, i);
-            double d7 = dxyz_array(k + 1, j, i + 1);
-            double d8 = dxyz_array(k + 1, j + 1, i + 1);
-            double d = std::min(std::min(std::min(d1, d2), std::min(d3, d4)),
-                                std::min(std::min(d5, d6), std::min(d7, d8)));
-            int mask_value = (d <= 1.0) ? Foreground : Background;
-            mask(k, j, i) |= mask_value;
+            if (z0 + (int)k >= index0_ && z0 + (int)k < index1_){
+              double d1 = dxyz_array(k, j, i);
+              double d2 = dxyz_array(k, j + 1, i);
+              double d3 = dxyz_array(k, j, i + 1);
+              double d4 = dxyz_array(k, j + 1, i + 1);
+              double d5 = dxyz_array(k + 1, j, i);
+              double d6 = dxyz_array(k + 1, j + 1, i);
+              double d7 = dxyz_array(k + 1, j, i + 1);
+              double d8 = dxyz_array(k + 1, j + 1, i + 1);
+              double d = std::min(std::min(std::min(d1, d2), std::min(d3, d4)),
+                                  std::min(std::min(d5, d6), std::min(d7, d8)));
+              int mask_value = (d <= 1.0) ? Foreground : Background;
+              mask(k, j, i) |= mask_value;
+            }
           }
         }
       }

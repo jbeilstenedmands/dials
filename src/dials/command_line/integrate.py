@@ -606,7 +606,7 @@ def run_integration(params, experiments, reference=None):
     reflections = integrator.integrate()
 
     # Remove unintegrated reflections
-    if not params.output.output_unintegrated_reflections:
+    '''if not params.output.output_unintegrated_reflections:
         keep = reflections.get_flags(reflections.flags.integrated, all=False)
         logger.info(
             "Removing %d unintegrated reflections of %d total",
@@ -614,7 +614,7 @@ def run_integration(params, experiments, reference=None):
             keep.size(),
         )
 
-        reflections = reflections.select(keep)
+        reflections = reflections.select(keep)'''
 
     # Append rubbish data onto the end
     if rubbish is not None and params.output.include_bad_reference:
