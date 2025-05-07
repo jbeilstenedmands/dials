@@ -24,7 +24,7 @@ class AssignIndicesGlobal(AssignIndicesStrategy):
         reflections["miller_index"] = flex.miller_index(len(reflections), (0, 0, 0))
         if d_min is not None:
             d_spacings = 1 / reciprocal_lattice_points.norms()
-            inside_resolution_limit = d_spacings > d_min
+            inside_resolution_limit = d_spacings >= d_min
         else:
             inside_resolution_limit = flex.bool(reciprocal_lattice_points.size(), True)
         sel = inside_resolution_limit & (reflections["id"] == -1)
@@ -88,7 +88,7 @@ class AssignIndicesLocal(AssignIndicesStrategy):
             reflections["miller_index"] = flex.miller_index(len(reflections))
         if d_min is not None:
             d_spacings = 1 / reciprocal_lattice_points.norms()
-            inside_resolution_limit = d_spacings > d_min
+            inside_resolution_limit = d_spacings >= d_min
         else:
             inside_resolution_limit = flex.bool(reciprocal_lattice_points.size(), True)
         sel = inside_resolution_limit & (reflections["id"] == -1)

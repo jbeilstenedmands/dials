@@ -186,7 +186,7 @@ class LatticeSearch(indexer.Indexer):
         for cm in candidate_orientation_matrices:
             sel = self.reflections["id"] == -1
             if self.d_min is not None:
-                sel &= 1 / self.reflections["rlp"].norms() > self.d_min
+                sel &= 1 / self.reflections["rlp"].norms() >= self.d_min
             xo, yo, zo = self.reflections["xyzobs.mm.value"].parts()
             imageset_id = self.reflections["imageset_id"]
             experiments = ExperimentList()
@@ -258,7 +258,6 @@ class LatticeSearch(indexer.Indexer):
                 if new_crystal is None:
                     continue
                 experiments[0].crystal.update(new_crystal)
-
             args.append((experiments, refl))
             if len(args) == self.params.basis_vector_combinations.max_refine:
                 break
@@ -326,7 +325,7 @@ class BasisVectorSearch(LatticeSearch):
         self.d_min = self.params.refinement_protocol.d_min_start
         sel = self.reflections["id"] == -1
         if self.d_min is not None:
-            sel &= 1 / self.reflections["rlp"].norms() > self.d_min
+            sel &= 1 / self.reflections["rlp"].norms() >= self.d_min
         reflections = self.reflections.select(sel)
         (
             self.candidate_basis_vectors,

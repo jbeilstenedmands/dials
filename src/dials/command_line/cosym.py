@@ -356,7 +356,7 @@ class cosym(Subject):
     @Subject.notify_event("performed_unit_cell_clustering")
     def _unit_cell_clustering(self, experiments):
         crystal_symmetries = [
-            expt.crystal.get_crystal_symmetry() for expt in experiments
+            expt.crystal.get_crystal_symmetry().niggli_cell() for expt in experiments
         ]
         # lattice ids used to label plots, so want numerical ids
         lattice_ids = [

@@ -337,6 +337,9 @@ class Target:
         if self._weights:
             ## use the counts as weights
             wij_matrix = wij_matrix.toarray().astype(np.float64)
+            sel_wij = wij_matrix[wij_matrix > 0]
+            logger.info(f"Mean neff {np.mean(sel_wij)}")
+            logger.info(f"neff range {np.min(sel_wij)} , {np.max(sel_wij)}")
             if self._weights == "standard_error":
                 # N.B. using effective n due to sigma weighting, which can be below 2
                 # but approches 1 in the limit, so rather say efective sample size
