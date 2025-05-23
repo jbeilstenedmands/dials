@@ -30,6 +30,14 @@ namespace dials { namespace algorithms { namespace boost_python {
       this->get_override("fit")(reflections);
     }
 
+    std::shared_ptr<SamplerIface> get_sampler() const {
+      return this->get_sampler();
+    }
+
+    profile_model::gaussian_rs::transform::TransformSpec get_transform_spec() const {
+      return this->get_transform_spec();
+    }
+
     void validate(af::reflection_table reflections) const {
       this->get_override("validate")(reflections);
     }

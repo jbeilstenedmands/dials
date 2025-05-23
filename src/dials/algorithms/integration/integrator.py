@@ -1378,7 +1378,7 @@ Splitting reflection table into %s subsets for processing
         return tabulate(rows, headers="firstrow")
 
 
-def run_parallel_job(task, delta_b, delta_m):
+def run_parallel_job(task, delta_b, delta_m, profile_fitter):
     experiment = task.experiments[0]
     imageset = experiment.imageset
     frame0, frame1 = task.job
@@ -1453,6 +1453,7 @@ def run_parallel_job(task, delta_b, delta_m):
         experiment.detector,
         delta_b,
         delta_m,
+        profile_fitter,
     )
 
     for i in range(len(imageset)):
@@ -1487,6 +1488,9 @@ def run_parallel_job(task, delta_b, delta_m):
     sel_refls["num_pixels.valid"] = flex.int(sel_refls.size(), 0)
     sel_refls["background.sum.value"] = flex.double(sel_refls.size(), 0)
     sel_refls["background.sum.variance"] = flex.double(sel_refls.size(), 0)
+    sel_refls["background.prf.value"] = flex.double(sel_refls.size(), 0)
+    sel_refls["background.prf.variance"] = flex.double(sel_refls.size(), 0)
+    sel_refls["prf.correlation"] = flex.double(sel_refls.size(), 0)
     sel_refls["intensity.sum.variance"] = flex.double(sel_refls.size(), 0)
     sel_refls["xyzobs.px.value"] = flex.vec3_double(sel_refls.size())
     sel_refls["xyzobs.mm.value"] = flex.vec3_double(sel_refls.size())
@@ -1507,8 +1511,10 @@ def run_parallel_job(task, delta_b, delta_m):
     return sel_refls
 
 
-class InFlightIntegrator:
+class InFlightIntegrator(Integrator):
     """Process images in-flight"""
+
+    ProcessorClass = Processor3D
 
     def __init__(self, experiments, reflections, params):
         # require Pixel array detector with no gain or pedestal for background algorithm
@@ -1567,6 +1573,8 @@ class InFlightIntegrator:
 
         ## initialise rotation - as in standard - makes bboxes
         _initialize_rotation(self.experiments, self.params, self.reflections)
+        profile_fitter = self.fit_profiles()
+
         logger.info("=" * 80)
         logger.info("")
         logger.info(heading("Integrating reflections"))
@@ -1608,7 +1616,7 @@ class InFlightIntegrator:
         )
         with concurrent.futures.ProcessPoolExecutor(max_workers=nproc) as pool:
             for i, task in enumerate(processor.manager.tasks()):
-                futures[pool.submit(run_parallel_job, task, delta_b, delta_m)] = i
+                futures[pool.submit(run_parallel_job, task, delta_b, delta_m, profile_fitter)] = i
             for future in concurrent.futures.as_completed(futures):
                 idx = futures[future]
                 sel_refls = future.result()

@@ -327,8 +327,9 @@ namespace dials { namespace algorithms {
       return result;
     }
 
-  private:
     std::vector<modeller_pointer> modellers_;
+    //private:
+    //std::vector<modeller_pointer> modellers_;
   };
 
 }}  // namespace dials::algorithms

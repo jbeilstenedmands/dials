@@ -16,8 +16,10 @@
 #include <vector>
 #include <dials/array_family/scitbx_shared_and_versa.h>
 #include <dials/algorithms/profile_model/modeller/modeller_interface.h>
+#include <dials/algorithms/profile_model/gaussian_rs/transform/transform.h>
 
 namespace dials { namespace algorithms {
+  using dials::algorithms::profile_model::gaussian_rs::transform::TransformSpec;
 
   /**
    * A class to do empirical profile modelling
@@ -43,6 +45,14 @@ namespace dials { namespace algorithms {
     }
 
     virtual ~EmpiricalProfileModeller() {}
+
+    TransformSpec get_transform_spec() const {
+      return TransformSpec();
+    }
+
+    std::shared_ptr<SamplerIface> get_sampler() {
+      return nullptr;
+    }
 
     /**
      * Add a profile with indices and weights

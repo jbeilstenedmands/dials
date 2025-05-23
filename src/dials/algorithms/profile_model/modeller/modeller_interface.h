@@ -14,6 +14,8 @@
 
 #include <memory>
 #include <dials/array_family/reflection_table.h>
+#include <dials/algorithms/profile_model/gaussian_rs/transform/transform.h>
+#include <dials/algorithms/profile_model/modeller/sampler_interface.h>
 
 namespace dials { namespace algorithms {
 
@@ -33,6 +35,10 @@ namespace dials { namespace algorithms {
     virtual ~ProfileModellerIface() {}
 
     virtual void model(af::reflection_table) = 0;
+
+    std::shared_ptr<SamplerIface> get_sampler() {return nullptr;}
+
+    virtual profile_model::gaussian_rs::transform::TransformSpec get_transform_spec() const =0;
 
     virtual void accumulate(std::shared_ptr<ProfileModellerIface>) = 0;
 

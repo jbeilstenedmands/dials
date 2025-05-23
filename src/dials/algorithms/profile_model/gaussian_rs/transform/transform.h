@@ -81,6 +81,7 @@ namespace dials {
        * @param n_sigma The number of standard deviations
        * @param grid_size The size of the reflection basis grid
        */
+      TransformSpec() {std::cout << "Using uninitialised spec" << std::endl;}
       TransformSpec(const std::shared_ptr<BeamBase> beam,
                     const Detector &detector,
                     const Goniometer &gonio,
@@ -214,13 +215,19 @@ namespace dials {
         init(spec, cs, bbox, panel_id);
       }
 
-      void add_single(FloatType intensity, FloatType bkgrd, bool mask, int x, int y, int z){
-        //std::cout << "Adding " << intensity << " " << bkgrd << " " << mask<< " " << x << "," << y << "," << z << std::endl;
-        call_single(intensity, bkgrd, mask, x,y,z);
+      void scale_background(double scale){
+        for (int i=0;i<background_.size();++i){
+          background_[i] *= scale;
+        }
       }
 
-      void add_single(FloatType intensity, bool mask, int x, int y, int z){
-        call_single(intensity, mask,x,y,z);
+      void add_single(FloatType intensity, FloatType bkgrd, int x, int y, int z){
+        //std::cout << "Adding " << intensity << " " << bkgrd << " " << mask<< " " << x << "," << y << "," << z << std::endl;
+        call_single(intensity, bkgrd, x,y,z);
+      }
+
+      void add_single(FloatType intensity, int x, int y, int z){
+        call_single(intensity,x,y,z);
       }
 
       /** @returns The transformed profile */
@@ -312,7 +319,19 @@ namespace dials {
         af::c_grid<2> grid_size2(grid_size_[1], grid_size_[2]);
 
         for (int j = 0; j < shoebox_size_[1]; ++j) {
+          if (y0_ + j < 0 | y0_ + j >= panel.get_image_size()[1]){
+            for (int i = 0; i < shoebox_size_[2]; ++i){
+              std::vector<ii_jj_frac<FloatType>> precalc_data_;
+              precalc_data_all.push_back(precalc_data_);
+            }
+            continue;
+          }
           for (int i = 0; i < shoebox_size_[2]; ++i) {
+            if (x0_ + i < 0 | x0_ + i >= panel.get_image_size()[0]){
+              std::vector<ii_jj_frac<FloatType>> precalc_data_;
+              precalc_data_all.push_back(precalc_data_);
+              continue;
+            }
             vert4 input(gc_array(j, i),
                     gc_array(j, i + 1),
                     gc_array(j + 1, i + 1),
@@ -331,10 +350,7 @@ namespace dials {
         }
       }
 
-      void call_single(const FloatType &image, const bool &mask, const int x, const int y, const int z){
-        if (!mask){
-          return;
-        }
+      void call_single(const FloatType &image, const int x, const int y, const int z){
         
         if (y0_ + y < 0 | y0_ + y > panel.get_image_size()[1]){
           return;
@@ -371,10 +387,7 @@ namespace dials {
         }*/
       }
 
-      void call_single(const FloatType &image, const FloatType &bkgrd, const bool &mask, const int x, const int y, const int z){
-        if (!mask){
-          return;
-        }
+      void call_single(const FloatType &image, const FloatType &bkgrd, const int x, const int y, const int z){
         if (y0_ + y < 0 | y0_ + y > panel.get_image_size()[1]){
           return;
         }
@@ -386,6 +399,7 @@ namespace dials {
         //std::cout << "here" << std::endl;
 
         int index = x  + (y*shoebox_size_[2]);
+        //std::cout << index << " " << precalc_data_all.size() << std::endl;
         std::vector<ii_jj_frac<FloatType>>& precalc_list = precalc_data_all[index];
         for (ii_jj_frac<FloatType>& pre:precalc_list){
           FloatType value = image * pre.fraction;

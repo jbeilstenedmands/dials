@@ -12,6 +12,7 @@
 #define DIALS_ALGORITHMS_POLYGON_SPATIAL_INTERPOLATION_H
 
 #include <cmath>
+#include <iostream>
 #include <scitbx/vec2.h>
 #include <scitbx/array_family/tiny_types.h>
 #include <scitbx/array_family/ref_reductions.h>
@@ -114,6 +115,8 @@ namespace dials { namespace algorithms { namespace polygon {
       af::shared<Match> matches;
       int4 range = quad_grid_range(input, output_size);
       if (range[0] >= range[1] || range[2] >= range[3]) return matches;
+      //std::cout << input[0][0] << " " << input[0][1] << " " << input[1][0] << " " << input[1][1]<< " ";
+      //std::cout << input[2][0] << " " << input[2][1] << " " << input[3][0] << " " << input[3][1]<< std::endl;
       double target_area = reverse_quad_inplace_if_backward(input);
       for (std::size_t jj = range[2]; jj < range[3]; ++jj) {
         for (std::size_t ii = range[0]; ii < range[1]; ++ii) {

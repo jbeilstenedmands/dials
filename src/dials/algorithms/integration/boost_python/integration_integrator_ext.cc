@@ -14,6 +14,7 @@
 #include <dials/algorithms/integration/integrator.h>
 #include <dials/algorithms/integration/manager.h>
 #include <dxtbx/array_family/flex_table_suite.h>
+#include <dials/algorithms/profile_model/modeller/multi_experiment_modeller.h>
 
 using namespace boost::python;
 
@@ -357,7 +358,7 @@ namespace dials { namespace algorithms { namespace boost_python {
                 const dxtbx::model::Goniometer &,
                 const dxtbx::model::Detector &,
                 double,
-                double>())
+                double, MultiExpProfileModeller &>())
       .def("next_data_only", &ShoeboxProcessorV2::next_data_only<double>)
       .def("next_data_only", &ShoeboxProcessorV2::next_data_only<int>)
       .def("frame0", &ShoeboxProcessorV2::frame0)

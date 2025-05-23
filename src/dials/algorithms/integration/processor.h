@@ -32,6 +32,9 @@
 #include <dxtbx/model/scan.h>
 #include <dials/algorithms/profile_model/gaussian_rs/coordinate_system.h>
 #include <chrono>
+#include <dials/algorithms/profile_model/modeller/multi_experiment_modeller.h>
+#include <dials/algorithms/integration/fit/fitting.h>
+#include <dials/algorithms/profile_model/gaussian_rs/transform/transform.h>
 
 namespace dials { namespace algorithms {
 
@@ -39,6 +42,8 @@ namespace dials { namespace algorithms {
   using model::Image;
   using model::Shoebox;
   using model::Valid;
+  using dials::algorithms::profile_model::gaussian_rs::transform::TransformForwardInFlight;
+  using dials::algorithms::profile_model::gaussian_rs::transform::TransformSpec;
 
   /**
    * The cctbx build system is too messed up to figure out how to build
@@ -415,7 +420,8 @@ namespace dials { namespace algorithms {
                        const dxtbx::model::Goniometer& gonio,
                        const dxtbx::model::Detector& detector,
                        const double delta_b,
-                       const double delta_m)
+                       const double delta_m,
+                       const MultiExpProfileModeller profile_fitter_)
         : data_(data),
           extract_time_(0.0),
           process_time_(0.0),
@@ -432,14 +438,17 @@ namespace dials { namespace algorithms {
           detector_(detector),
           scan_(scan),
           index0_(scan.get_array_range()[0]),
-          index1_(scan.get_array_range()[1]) {
+          index1_(scan.get_array_range()[1]),
+          profile_fitter(profile_fitter_) {
+      std::cout << "here1" << std::endl;
       delta_b_r2 = 1.0 / (std::pow(delta_b, 2));
       delta_m_r2 = 1.0 / (std::pow(delta_m, 2));
       DIALS_ASSERT(frame0_ < frame1_);
       DIALS_ASSERT(npanels_ > 0);
       DIALS_ASSERT(data.contains("shoebox"));
       DIALS_ASSERT(data.size() > 0);
-
+      TransformSpec spec = profile_fitter.modellers_[0]->get_transform_spec();
+      std::cout << "here2" << std::endl;
       // Precalculate a few things.
       af::ref<Shoebox<>> shoebox = data_["shoebox"];
       af::ref<vec3<double>> s1_vec = data_["s1"];
@@ -448,8 +457,10 @@ namespace dials { namespace algorithms {
         const dxtbx::model::Panel& panel = detector_[p];
         std::vector<profile_model::gaussian_rs::CoordinateSystem> csi;
         std::vector<double> atten_lengths_p;
+        std::vector<TransformForwardInFlight<double>> transforms_vector;
         csi.reserve(data.size());
         atten_lengths_p.reserve(data.size());
+        std::cout << "here3" << std::endl;
         for (int i = 0; i < data_.size(); ++i) {
           vec3<double> s1 = s1_vec[i];
           vec3<double> xyzcal = xyzcal_px[i];
@@ -459,9 +470,21 @@ namespace dials { namespace algorithms {
           vec2<double> shoebox_centroid_px = panel.get_ray_intersection_px(s1);
           double attenuation_length = panel.attenuation_length(shoebox_centroid_px);
           atten_lengths_p.push_back(attenuation_length);
+          std::cout << "here3.1" << std::endl;
+          TransformForwardInFlight<double> transform(spec,
+                                               cs,
+                                               shoebox[i].bbox,
+                                               shoebox[i].panel);
+          std::cout << "here3.2" << std::endl;
+          transforms_vector.push_back(transform);
+          std::cout << "here3.3" << std::endl;
         }
+        std::cout << "here4" << std::endl;
         coordinate_systems_[p] = csi;
         attenuation_lengths_[p] = atten_lengths_p;
+        
+        transforms_[p] = std::move(transforms_vector);
+        std::cout << "here5" << std::endl;
       }
 
       std::size_t size = nframes_ * npanels_;
@@ -512,17 +535,20 @@ namespace dials { namespace algorithms {
       // Allocate data where necessary
       af::ref<Shoebox<>> shoebox = data_["shoebox"];
       double s0_length = s0_.length();
-
+      std::cout << "here6" << std::endl;
       for (std::size_t p = 0; p < image.npanels(); ++p) {
         std::vector<double> attenuation_lengths = attenuation_lengths_[p];
+        std::vector<TransformForwardInFlight<double>> transforms_vector = transforms_[p];
         const dxtbx::model::Panel& panel = detector_[p];
         af::const_ref<std::size_t> ind = indices(frame_, p);
         af::const_ref<T, af::c_grid<2>> data = image.data(p);
         af::const_ref<bool, af::c_grid<2>> mask = image.mask(p);
         DIALS_ASSERT(data.accessor().all_eq(mask.accessor()));
         for (std::size_t i = 0; i < ind.size(); ++i) {
+          //std::cout << "here7" << std::endl;
           DIALS_ASSERT(ind[i] < shoebox.size());
           Shoebox<>& sbox = shoebox[ind[i]];
+          
           int6 b = sbox.bbox;
           DIALS_ASSERT(b[1] > b[0]);
           DIALS_ASSERT(b[3] > b[2]);
@@ -594,6 +620,7 @@ namespace dials { namespace algorithms {
           // now loop through the shoebox pixels, test if they are in the image
           // and see if they are foreground, background, valid etc and
           // add them to the right quantity in the shoebox.
+          //std::cout << "here8" << std::endl;
           for (int j3 = 0; j3 < ys; ++j3) {
             for (int i3 = 0; i3 < xs; ++i3) {
               bool this_in_image_bounds = all_in_image_bounds;
@@ -616,6 +643,11 @@ namespace dials { namespace algorithms {
                     sbox.sum_pixel_coords_intensity[0] += intensity * (i3 + x0 + 0.5);
                     sbox.sum_pixel_coords_intensity[1] += intensity * (j3 + y0 + 0.5);
                     sbox.sum_pixel_coords_intensity[2] += intensity * (frame_ + 0.5);
+                    //std::cout << "here9" << std::endl;
+                    TransformForwardInFlight<double> transform = transforms_vector[ind[i]];
+                    //std::cout << "here9.1" << std::endl;
+                    transform.add_single(intensity, 1.0, i3, j3, z);
+                    //std::cout << "here10" << std::endl;
                   } else {
                     sbox.masked_image_pixel = true;
                     sbox.n_invalid_fg += 1;
@@ -666,6 +698,9 @@ namespace dials { namespace algorithms {
       af::shared<int> bg_used = data["num_pixels.background_used"];
       af::shared<int> foreground = data["num_pixels.foreground"];
       af::shared<int> valid = data["num_pixels.valid"];
+      af::shared<double> prf_intensity_val = data["intensity.prf.value"];
+      af::shared<double> prf_intensity_var= data["intensity.prf.variance"];
+      af::shared<double> prf_reference_cor = data["prf.correlation"];
       af::shared<double> variance = data["intensity.sum.variance"];
       af::shared<double> background = data["background.mean"];
       af::shared<double> background_total =
@@ -673,9 +708,46 @@ namespace dials { namespace algorithms {
                                        // foreground region
       af::shared<double> background_variance = data["background.sum.variance"];
       af::shared<vec3<double>> xyzobs = data["xyzobs.px.value"];
+      af::shared<vec3<double>> xyzcal = data["xyzcal.px"];
       af::shared<vec3<double>> xyzobs_mm = data["xyzobs.mm.value"];
       for (int i = 0; i < data.size(); i++) {
         background[i] = shoebox[i].mean_background;
+        
+        // Now do the profile fitting.
+        std::size_t panel = shoebox[i].panel;
+        std::cout << "here" << std::endl;
+        TransformForwardInFlight<double> transform = transforms_[panel][i];
+        transform.scale_background(shoebox[i].mean_background);
+
+        std::size_t index = profile_fitter.modellers_[0]->get_sampler()->nearest(shoebox[i].panel, xyzcal[i]);
+        ProfileModellerIface::data_const_reference profile_data = profile_fitter.modellers_[0]->data(index).const_ref();
+        ProfileModellerIface::mask_const_reference mask1 = profile_fitter.modellers_[0]->mask(index).const_ref();
+
+        // Get the transformed shoebox
+        ProfileModellerIface::data_const_reference c = transform.profile().const_ref();
+        ProfileModellerIface::data_const_reference b = transform.background().const_ref();
+        ProfileModellerIface::mask_const_reference mask2 = transform.mask().const_ref();
+        af::versa<bool, af::c_grid<3> > m(mask2.accessor());
+        DIALS_ASSERT(mask1.size() == mask2.size());
+        for (std::size_t j = 0; j < m.size(); ++j) {
+          m[j] = mask1[j] && mask2[j];
+        }
+
+        // Do the profile fitting
+        ProfileFitter<double> fit(c, b, m.const_ref(), profile_data, 1e-3, 100);
+        // DIALS_ASSERT(fit.niter() < 100);
+
+        // Set the data in the reflection
+        prf_intensity_val[i] = fit.intensity()[0];
+        prf_intensity_var[i] = fit.variance()[0];
+        prf_reference_cor[i] = fit.correlation();
+        // reference_rmsd[i] = fit.rmsd();
+
+        // Set the integrated flag
+        flags[i] |= af::IntegratedPrf;
+        //success[i] = true;
+
+
         // background_variance[i] = shoebox[i].mean_background;
         double bg_total = shoebox[i].mean_background * shoebox[i].n_valid_fg;
         total_intensity[i] = shoebox[i].total_intensity - bg_total;
@@ -808,7 +880,10 @@ namespace dials { namespace algorithms {
     double index1_;
     std::map<std::size_t, std::vector<profile_model::gaussian_rs::CoordinateSystem>>
       coordinate_systems_;
+    std::map<std::size_t, std::vector<TransformForwardInFlight<double>>>
+      transforms_;
     std::map<std::size_t, std::vector<double>> attenuation_lengths_;
+    MultiExpProfileModeller profile_fitter;
   };
 
 }}  // namespace dials::algorithms

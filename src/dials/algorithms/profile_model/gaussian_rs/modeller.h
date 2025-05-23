@@ -77,6 +77,10 @@ namespace dials { namespace algorithms {
                                 scan,
                                 num_scan_points,
                                 grid_method)) {}
+    
+    std::shared_ptr<SamplerIface> get_sampler(){
+      return sampler_;
+    }
 
   protected:
     std::shared_ptr<SamplerIface> init_sampler(std::shared_ptr<BeamBase> beam,
@@ -207,6 +211,10 @@ namespace dials { namespace algorithms {
                 n_sigma,
                 grid_size) {
       DIALS_ASSERT(sampler_ != 0);
+    }
+
+    TransformSpec get_transform_spec() const {
+      return spec_;
     }
 
     std::shared_ptr<BeamBase> beam() const {
@@ -451,7 +459,7 @@ namespace dials { namespace algorithms {
               for (int y=0;y<y1-y0;++y){
                 for (int x=0;x<x1-x0;++x){
                   if (mask(z,y,x)){
-                    transform.add_single(sbox[i].data(z,y,x),sbox[i].background(z,y,x), mask(z,y,x), x, y,z);
+                    transform.add_single(sbox[i].data(z,y,x),sbox[i].background(z,y,x), x, y,z);
                   }
                 }
               }
