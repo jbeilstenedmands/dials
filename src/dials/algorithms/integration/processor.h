@@ -25,12 +25,77 @@
 #include <dials/array_family/reflection_table.h>
 #include <dxtbx/array_family/flex_table_suite.h>
 #include <dials/array_family/boost_python/reflection_table_suite.h>
+#include <dials/algorithms/profile_model/gaussian_rs/coordinate_system.h>
 
 namespace dials { namespace algorithms {
 
   using model::Image;
   using model::Shoebox;
   using model::Valid;
+
+  af::shared<vec3<double>> kabsch_transform(af::reflection_table refls,
+                                            const dxtbx::model::BeamBase& beam,
+                                            const dxtbx::model::Goniometer& gonio,
+                                            const dxtbx::model::Scan& scan,
+                                            const dxtbx::model::Detector& detector) {
+    // Initialise some things.
+    vec3<double> m2_(gonio.get_rotation_axis());
+    vec3<double> s0_(beam.get_s0());
+    double s0_length = s0_.length();
+    double index0_(scan.get_array_range()[0]);
+    double phi0_(scan.get_oscillation()[0]);
+    double dphi_(scan.get_oscillation()[1]);
+
+    int refl_idx = 0;  // For this test, just do it on the first reflection in the table
+    af::ref<vec3<double>> xyzcal_array = refls["xyzcal.px"];
+    vec3<double> xyzcal = xyzcal_array[refl_idx];
+    double phi_c = phi0_ + (xyzcal[2] - index0_) * dphi_;
+    af::ref<vec3<double>> s1_array = refls["s1"];
+    vec3<double> s1 = s1_array[refl_idx];
+    profile_model::gaussian_rs::CoordinateSystem cs(m2_, s0_, s1, phi_c);
+    af::ref<Shoebox<>> shoebox = refls["shoebox"];
+    Shoebox<>& sbox = shoebox[refl_idx];
+    int p = 0;  // Panel index
+    const dxtbx::model::Panel& panel = detector[p];
+    vec2<double> shoebox_centroid_px = panel.get_ray_intersection_px(s1);
+    double attenuation_length = panel.attenuation_length(shoebox_centroid_px);
+
+    int6 b = sbox.bbox;
+    // Bounding box boundaries
+    int x0 = b[0];
+    int x1 = b[1];
+    int y0 = b[2];
+    int y1 = b[3];
+    int z0 = b[4];
+    int z1 = b[5];
+    // Extent of the bounding box in different dimensions
+    int xsize = x1 - x0;
+    int ysize = y1 - y0;
+    int zsize = z1 - z0;
+
+    af::shared<vec3<double>> kabsch_coord_array;
+    // This calculate the kabsch coordinate for the centre of each voxel.
+    for (std::size_t k = 0; k < zsize; ++k) {
+      for (int j2 = 0; j2 < ysize; ++j2) {
+        for (int i2 = 0; i2 < xsize; ++i2) {
+          vec3<double> s1dash =
+            panel
+              .get_pixel_lab_coord(vec2<double>(x0 + i2 + 0.5, y0 + j2 + 0.5),
+                                   attenuation_length)
+              .normalize()
+            * s0_length;
+          double phidash = phi0_ + (z0 + 0.5 + k - index0_) * dphi_;
+          // First one (commented out) calls the standard dials calculation
+          // vec3<double> epsilon_coords = cs.coords_from_s1vector(s1dash, phidash);
+          // Second one calls what I think the calculation should be
+          vec3<double> epsilon_coords =
+            cs.coords_from_s1vector_corrected(s1dash, phidash);
+          kabsch_coord_array.push_back(epsilon_coords);
+        }
+      }
+    }
+    return kabsch_coord_array;
+  }
 
   /**
    * The cctbx build system is too messed up to figure out how to build
@@ -78,7 +143,7 @@ namespace dials { namespace algorithms {
       DIALS_ASSERT(data.is_consistent());
       DIALS_ASSERT(data.contains("shoebox"));
       DIALS_ASSERT(data.size() > 0);
-      af::const_ref<Shoebox<> > shoebox = data["shoebox"];
+      af::const_ref<Shoebox<>> shoebox = data["shoebox"];
       std::size_t size = nframes_ * npanels_;
       std::vector<std::size_t> num(size, 0);
       std::vector<std::size_t> count(size, 0);
@@ -121,8 +186,8 @@ namespace dials { namespace algorithms {
       using dials::af::boost_python::reflection_table_suite::select_rows_index;
       using dxtbx::af::flex_table_suite::set_selected_rows_index;
       typedef Shoebox<>::float_type float_type;
-      typedef af::ref<float_type, af::c_grid<3> > sbox_data_type;
-      typedef af::ref<int, af::c_grid<3> > sbox_mask_type;
+      typedef af::ref<float_type, af::c_grid<3>> sbox_data_type;
+      typedef af::ref<int, af::c_grid<3>> sbox_mask_type;
       DIALS_ASSERT(frame_ >= frame0_ && frame_ < frame1_);
       DIALS_ASSERT(image.npanels() == npanels_);
 
@@ -131,12 +196,12 @@ namespace dials { namespace algorithms {
 
       // For each image, extract shoeboxes of reflections recorded.
       // Allocate data where necessary
-      af::ref<Shoebox<> > shoebox = data_["shoebox"];
+      af::ref<Shoebox<>> shoebox = data_["shoebox"];
       af::shared<std::size_t> process_indices;
       for (std::size_t p = 0; p < image.npanels(); ++p) {
         af::const_ref<std::size_t> ind = indices(frame_, p);
-        af::const_ref<T, af::c_grid<2> > data = image.data(p);
-        af::const_ref<bool, af::c_grid<2> > mask = image.mask(p);
+        af::const_ref<T, af::c_grid<2>> data = image.data(p);
+        af::const_ref<bool, af::c_grid<2>> mask = image.mask(p);
         DIALS_ASSERT(data.accessor().all_eq(mask.accessor()));
         for (std::size_t i = 0; i < ind.size(); ++i) {
           DIALS_ASSERT(ind[i] < shoebox.size());
@@ -231,8 +296,8 @@ namespace dials { namespace algorithms {
       using dials::af::boost_python::reflection_table_suite::select_rows_index;
       using dxtbx::af::flex_table_suite::set_selected_rows_index;
       typedef Shoebox<>::float_type float_type;
-      typedef af::ref<float_type, af::c_grid<3> > sbox_data_type;
-      typedef af::ref<int, af::c_grid<3> > sbox_mask_type;
+      typedef af::ref<float_type, af::c_grid<3>> sbox_data_type;
+      typedef af::ref<int, af::c_grid<3>> sbox_mask_type;
       DIALS_ASSERT(frame_ >= frame0_ && frame_ < frame1_);
       DIALS_ASSERT(image.npanels() == npanels_);
 
@@ -241,12 +306,12 @@ namespace dials { namespace algorithms {
 
       // For each image, extract shoeboxes of reflections recorded.
       // Allocate data where necessary
-      af::ref<Shoebox<> > shoebox = data_["shoebox"];
+      af::ref<Shoebox<>> shoebox = data_["shoebox"];
       af::shared<std::size_t> process_indices;
       for (std::size_t p = 0; p < image.npanels(); ++p) {
         af::const_ref<std::size_t> ind = indices(frame_, p);
-        af::const_ref<T, af::c_grid<2> > data = image.data(p);
-        af::const_ref<bool, af::c_grid<2> > mask = image.mask(p);
+        af::const_ref<T, af::c_grid<2>> data = image.data(p);
+        af::const_ref<bool, af::c_grid<2>> mask = image.mask(p);
         DIALS_ASSERT(data.accessor().all_eq(mask.accessor()));
         for (std::size_t i = 0; i < ind.size(); ++i) {
           DIALS_ASSERT(ind[i] < shoebox.size());

@@ -280,6 +280,10 @@ namespace dials { namespace algorithms { namespace boost_python {
   };
 
   BOOST_PYTHON_MODULE(dials_algorithms_integration_integrator_ext) {
+    def("kabsch_transform",
+        &kabsch_transform,
+        (arg("refls"), arg("beam"), arg("gonio"), arg("scan"), arg("detector")));
+
     class_<GroupList::Group>("Group", no_init)
       .def("index", &GroupList::Group::index)
       .def("nindex", &GroupList::Group::nindex)
