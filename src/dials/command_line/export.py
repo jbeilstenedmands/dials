@@ -423,7 +423,7 @@ def export_xdsascii(params, experiments, reflections):
     :param reflections: The reflection tables
     """
 
-    _check_input(experiments, reflections, params=params, check_intensities=True)
+    _check_input(experiments, reflections, params=params)
 
     from dials.util.export_xds_ascii import export_xds_ascii
 
@@ -683,11 +683,11 @@ def run(args=None):
         sys.exit(f"Unknown format: {params.format}")
 
     # Export the data
-    try:
-        exporter(params, experiments, reflections)
-    except Exception as e:
+    #try:
+    exporter(params, experiments, reflections)
+    '''except Exception as e:
         logger.error(f"Error: {e}")
-        sys.exit(1)
+        sys.exit(1)'''
 
 
 if __name__ == "__main__":

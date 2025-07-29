@@ -126,18 +126,26 @@ def _export_experiment(
     else:
         prof_corr = flex.double(nref, 100.0)
 
+    print(list(integrated_data.keys()))
+
     if "intensity.sum.value" in integrated_data:
         I = integrated_data["intensity.sum.value"]
         V = integrated_data["intensity.sum.variance"]
         assert V.all_gt(0)
         V = var_model[0] * (V + var_model[1] * I * I)
         sigI = flex.sqrt(V)
-    else:
+    elif "intensity.prf.value" in integrated_data:
         I = integrated_data["intensity.prf.value"]
         V = integrated_data["intensity.prf.variance"]
         assert V.all_gt(0)
         V = var_model[0] * (V + var_model[1] * I * I)
         sigI = flex.sqrt(V)
+    else:
+        assert "intensity.scale.value" in integrated_data
+        I = integrated_data["intensity.scale.value"]
+        V = integrated_data["intensity.scale.variance"]
+        sigI = flex.sqrt(V)
+        # FIXME need to write applied variance model to file.
 
     fout = open(filename, "w")
 
