@@ -375,6 +375,8 @@ namespace dials { namespace algorithms { namespace profile_model {
             dxy_array(j, i) = (gxy[0] * gxy[0] + gxy[1] * gxy[1]) * delta_b_r2;
           }*/
         vec2<double> shoebox_centroid_px = panel.get_ray_intersection_px(s1);
+        double centroid_px_x = shoebox_centroid_px[0];
+        double centroid_px_y = shoebox_centroid_px[1];
         double attenuation_length = panel.attenuation_length(shoebox_centroid_px);
         af::versa<double, af::c_grid<3> > dxyz_array(
           af::c_grid<3>(zsize + 1, ysize + 1, xsize + 1));
@@ -393,10 +395,19 @@ namespace dials { namespace algorithms { namespace profile_model {
               // s1_dash = box.beam_vectors
               double phidash = phi0_ + (z0 + k - index0_) * dphi_;
               vec3<double> epsilon_coords = cs.coords_from_s1vector(s1dash, phidash);
+              if ((centroid_px_x > x) && (centroid_px_x < x + 1)) {
+                epsilon_coords[0] = 0.0;
+              }
+              if ((centroid_px_y > y) && (centroid_px_y < y + 1)) {
+                epsilon_coords[1] = 0.0;
+              }
+              if ((phidash > phi) && (phidash < phi + dphi_)) {
+                epsilon_coords[2] = 0.0;
+              }
               dxyz_array(k, j, i) =
                 ((epsilon_coords[0] * epsilon_coords[0]
                   + epsilon_coords[1] * epsilon_coords[1])
-                * delta_b_r2)
+                 * delta_b_r2)
                 + ((epsilon_coords[2] * epsilon_coords[2]) * delta_m_r2);
               // int mask_value = (d <= 1.0) ? Foreground : Background;
               // mask(k, j, i) |= mask_value;
