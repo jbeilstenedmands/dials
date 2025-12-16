@@ -17,6 +17,7 @@ import numpy as np
 
 import scitbx.math
 from dxtbx import flumpy
+from scitbx import matrix
 
 from dials.array_family import flex
 
@@ -27,7 +28,7 @@ class ComputeSigmaInKabschSpaceCorrected:
     def __init__(self, detector, reflections, beam, centroid_definition="com"):
         shoebox = reflections["shoebox"]
         xyz = reflections["xyzobs.px.value"]
-
+        xyzcal = reflections["xyzcal.mm"]
         # Loop through all the reflections
         variances = np.array([], dtype=np.float64)
 
@@ -38,9 +39,10 @@ class ComputeSigmaInKabschSpaceCorrected:
                 panel = shoebox[r].panel
                 s1_centroid.append(detector[panel].get_pixel_lab_coord(xyz[r][0:2]))
         else:
-            s1_centroid = reflections["s1"]
-
-        from scitbx import matrix
+            s1_centroid = []
+            for r in range(len(reflections)):
+                panel = shoebox[r].panel
+                s1_centroid.append(detector[panel].get_lab_coord(xyzcal[r][0:2]))
 
         s0 = matrix.col(beam.get_s0())
         for i, (s1, box) in enumerate(zip(s1_centroid, shoebox)):
@@ -637,11 +639,8 @@ class ProfileModelCalculator:
 
             logger.info("Using %d / %d reflections for sigma calculation", n_use, n_all)
             logger.info("Calculating E.S.D Beam Divergence.")
-            # beam_divergence = ComputeEsdBeamDivergence(
-            #    detector, reflections, centroid_definition="s1"
-            # )
             beam_divergence = ComputeSigmaInKabschSpaceCorrected(
-                detector, reflections, beam, centroid_definition="com"
+                detector, reflections, beam, centroid_definition="s1"
             )
 
             self._sigma_b = beam_divergence.sigma()
