@@ -382,25 +382,36 @@ namespace dials { namespace algorithms { namespace profile_model {
           af::c_grid<3>(zsize + 1, ysize + 1, xsize + 1));
 
         for (std::size_t k = 0; k <= zsize; ++k) {
+          // rotate s1 to this.
+          // angle betweeb
+          double phidash = phi0_ + (z0 + k - index0_) * dphi_;
+          // rotate s1 by phidash
+          double delta = (phi - phidash) * 3.14159 / 180.0;
+          vec3<double> s1c_this =
+            s1.unit_rotate_around_origin(m2_, delta).normalize() * s0_length;
+          // std::cout << "s1cthis " << s1c_this[0] << " " << s1c_this[1] << " " <<
+          // s1c_this[2] << std::endl; std::cout << "s1 " << s1[0] << " " << s1[1] << "
+          // " << s1[2] << std::endl; std::cout << "dphi " << delta << std::endl;
           for (int j = 0; j <= ysize; ++j) {
             for (int i = 0; i <= xsize; ++i) {
               double x = x0 + i;  // + 0.5;
               double y = y0 + j;  // + 0.5;
-              // int z = z0 + k;
+              // double z = z0 + k;
               vec3<double> s1dash =
                 panel.get_pixel_lab_coord(vec2<double>(x, y), attenuation_length)
                   .normalize()
                 * s0_length;
               // nned to get epsilon 1.
               // s1_dash = box.beam_vectors
-              double phidash = phi0_ + (z0 + k - index0_) * dphi_;
-              vec3<double> epsilon_coords = cs.coords_from_s1vector(s1dash, phidash);
-              if ((centroid_px_x > x) && (centroid_px_x < x + 1)) {
+
+              vec3<double> epsilon_coords =
+                cs.coords_from_s1vector(s1dash, phidash, s1c_this);
+              /*if ((centroid_px_x > x) && (centroid_px_x < x + 1)) {
                 epsilon_coords[0] = 0.0;
               }
               if ((centroid_px_y > y) && (centroid_px_y < y + 1)) {
                 epsilon_coords[1] = 0.0;
-              }
+              }*/
               if ((phidash > phi) && (phidash < phi + dphi_)) {
                 epsilon_coords[2] = 0.0;
               }

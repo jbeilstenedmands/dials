@@ -49,7 +49,7 @@ class ComputeSigmaInKabschSpaceCorrected:
             s1 = matrix.col(s1)
             e1 = s1.cross(s0).normalize()
             e2 = s1.cross(e1).normalize()
-            e3 = (s1 + s0).normalize()
+            # e3 = (s1 + s0).normalize()
             mask = box.mask != 0
             values = flumpy.to_numpy(box.values(mask))
             # coords = flumpy.to_numpy(box.coords(mask))
@@ -58,14 +58,12 @@ class ComputeSigmaInKabschSpaceCorrected:
             ntot = np.sum(values)
             varx = 0
             vary = 0
-            phi_0 = s1[2]  # ?
+            # phi_0 = s1[2]  # ?
             for s1p, n in zip(s1primes, values):
                 s1p = matrix.col(s1p)
-                phi_dash = s1p[2]  # ?
+                # phi_dash = s1p[2]  # ?
                 eps1 = e1.dot(s1p - s1) / mags1
                 eps2 = e2.dot(s1p - s1) / mags1
-                correction = (phi_dash - phi_0) * e2.dot(e3) / mags1
-                eps2 -= correction
                 varx += n * (eps1**2)
                 vary += n * (eps2**2)
             varx /= ntot

@@ -283,13 +283,14 @@ namespace dials { namespace algorithms { namespace profile_model {
         return vec3<double>(c12[0], c12[1], from_rotation_angle_fast(phi_dash));
       }
       vec3<double> coords_from_s1vector(const vec3<double>& s_dash,
-                                        double phi_dash) const {
-        double s1_length = s1_.length();
+                                        double phi_dash,
+                                        const vec3<double>& s1c_this) const {
+        double s1_length = s1c_this.length();
         DIALS_ASSERT(s1_length > 0);
         vec3<double> scaled_e1 = e1_ / s1_length;
         vec3<double> scaled_e2 = e2_ / s1_length;
-        return vec3<double>(scaled_e1 * (s_dash - s1_),
-                            scaled_e2 * (s_dash - s1_),
+        return vec3<double>(scaled_e1 * (s_dash - s1c_this),
+                            (scaled_e2 * (s_dash - s1c_this)),
                             zeta_ * (phi_dash - phi_));
       }
 
