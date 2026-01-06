@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import logging
 import math
+from typing import List, Optional, Tuple
 
 import numpy as np
 from sklearn.neighbors import NearestNeighbors
@@ -131,6 +132,168 @@ phil_scope = iotbx.phil.parse(
 """,
     process_includes=True,
 )
+
+
+def piecewise_constant_bic(y: np.ndarray) -> Tuple[int, float]:
+    """
+    Single-changepoint detection by Bayesian Information Criterion (BIC) for a piecewise-constant model.
+
+    Returns:
+      - k_best (int, 0-based): index of the FIRST point in the second segment (change between k-1 and k)
+      - delta_bic (float): BIC(no-change) - BIC(two-segment); larger => stronger evidence
+
+    Notes:
+      - SSE-based Gaussian-likelihood approximation with BIC penalty.
+    """
+    n = len(y)
+    if n < 3:
+        return 1, 0.0
+
+    # One-segment fit (global mean)
+    mu = y.mean()
+    sse0 = ((y - mu) ** 2).sum()
+    bic1 = n * np.log(sse0 / n if sse0 > 0 else 1e-12) + 1 * np.log(n)
+
+    best_k = 1
+    best_bic = float("inf")
+
+    # Try every split k = 1..n-1
+    for k in range(1, n):
+        mu1 = y[:k].mean()
+        mu2 = y[k:].mean()
+        sse = ((y[:k] - mu1) ** 2).sum() + ((y[k:] - mu2) ** 2).sum()
+        bic2 = n * np.log(sse / n if sse > 0 else 1e-12) + 2 * np.log(n)
+        if bic2 < best_bic:
+            best_bic = bic2
+            best_k = k
+
+    # Return the best split and the evidence strength
+    delta_bic = bic1 - best_bic
+    return best_k, float(delta_bic)
+
+
+class RefreshedBDetector:
+    """
+    Snapshot-wise drop detector for refreshed variance-ratio lists, using:
+      - Bayesian Information Criterion (BIC) single-changepoint model on the current variance-ratio list
+      - Tail stability check
+      - Initial-step gate using functional values (only when the best change is at n_dims=2)
+      - Consensus across recent snapshots to stabilize final decision.
+
+    Call the update method after analysis at each dimension - returns the dimension number (i.e. 1-based index)
+    (first point after the drop) when consensus is achieved, otherwise returns None. Minimum possible
+    returned dimension is 2 (i.e., a drop immediately after the first element). Only the first two
+    functional values are used for the initial-step gate.
+    """
+
+    def __init__(
+        self,
+        delta_bic_min: float = 2.0,  # strength of evidence required
+        post_eps: float = 0.10,  # tail mean <= (1 + post_eps) * first tail value
+        min_tail_points: int = 2,  # require at least this many points in the tail
+        gate_rel_variance_ratio_init: float = 0.5,  # need >=50% drop at first step to accept k=2
+        gate_rel_functional_init: float = 0.9,  # need >=90% change in functional at first step to accept k=2
+        consensus_snapshots: int = 2,  # require same assessed dimension across last S snapshots
+    ):
+        self.delta_bic_min = delta_bic_min
+        self.post_eps = post_eps
+        self.min_tail_points = min_tail_points
+        self.gate_rel_variance_ratio_init = gate_rel_variance_ratio_init
+        self.gate_rel_functional_init = gate_rel_functional_init
+        self.consensus_snapshots = consensus_snapshots
+
+        # Stored functional values (only first two matter for the initial-step gate)
+        self._f_first: Optional[float] = None
+        self._f_second: Optional[float] = None
+        self._dim_count: int = 0  # how many dimensions processed so far
+
+        # History of k predictions (1-based) for consensus
+        self._history: List[Optional[int]] = []
+
+    def _transform_variance_ratios(self, arr: np.ndarray) -> np.ndarray:
+        # Apply a logit transform to handle values near 1 and 0.
+        eps = 1e-6
+        clipped = np.clip(arr, eps, 1 - eps)
+        return np.log(clipped / (1 - clipped))
+
+    def _detect_on_snapshot(self, variance_ratios: np.ndarray) -> Optional[int]:
+        """
+        Run BIC detection + tail stability on the current variance ratio list.
+        Returns 1-based index of first point after the drop, or None.
+        """
+        n = len(variance_ratios)
+        if n < 3:
+            return None
+
+        y = self._transform_variance_ratios(variance_ratios.astype(float))
+        k0, dBIC = piecewise_constant_bic(
+            y
+        )  # k0 is 0-based index of first point in second segment
+        if dBIC < self.delta_bic_min:
+            return None
+
+        # Tail stability
+        tail = variance_ratios[k0:]
+        if len(tail) < self.min_tail_points:
+            return None
+        if np.mean(tail) > tail[0] * (1 + self.post_eps):
+            return None
+
+        # First-step gate (only if k0 corresponds to 1-based k=2)
+        if k0 == 1:
+            # Need two functional values and first two variance ratios
+            if self._f_first is None or self._f_second is None:
+                return None  # cannot gate; wait until we have two functional values
+            b0, b1 = variance_ratios[0], variance_ratios[1]
+            rel_b = (b1 - b0) / (b0 + 1e-12)
+            a0, a1 = self._f_first, self._f_second
+            rel_a = abs(a1 - a0) / (abs(a0) + 1e-12)
+            if not (
+                (rel_b <= -self.gate_rel_variance_ratio_init)
+                and (rel_a >= self.gate_rel_functional_init)
+            ):
+                return None
+
+        return k0 + 1  # convert to 1-based dimension index
+
+    def update(
+        self, functional_current: float, variance_ratios_current: np.ndarray
+    ) -> Optional[int]:
+        """
+        Update with the current dimension's 'a' (scalar) and the refreshed 'b' list (numpy array).
+        Returns the 1-based dimension index when consensus is achieved, else None.
+        """
+        # Track dimension count and the first two 'a' values
+        self._dim_count += 1
+        if self._dim_count == 1:
+            self._f_first = functional_current
+        elif self._dim_count == 2 and self._f_second is None:
+            self._f_second = functional_current
+
+        # Run snapshot detection on current b list
+        k_snapshot = self._detect_on_snapshot(
+            np.asarray(variance_ratios_current, dtype=float)
+        )
+        self._history.append(k_snapshot)
+
+        # Keep last few entries for minimal memory
+        keep = max(3, self.consensus_snapshots + 1)
+        if len(self._history) > keep:
+            self._history = self._history[-keep:]
+
+        # Consensus check
+        if self.consensus_snapshots <= 1:
+            return k_snapshot
+
+        tail = self._history[-self.consensus_snapshots :]
+        if (
+            len(tail) == self.consensus_snapshots
+            and all(t is not None for t in tail)
+            and len(set(tail)) == 1
+        ):
+            return tail[-1]
+
+        return None
 
 
 class CosymAnalysis(symmetry_base, Subject):
@@ -309,6 +472,16 @@ class CosymAnalysis(symmetry_base, Subject):
         logger.info("\nAutomatic determination of number of dimensions for analysis")
         dimensions = []
         functional = []
+
+        det = RefreshedBDetector(
+            delta_bic_min=2.0,
+            post_eps=0.10,
+            min_tail_points=2,
+            gate_rel_variance_ratio_init=0.5,
+            gate_rel_functional_init=0.9,
+            consensus_snapshots=2,
+        )
+
         for dim in range(1, dims_to_test + 1):
             logger.info(f"Testing dimension: {dim}/{dims_to_test}")
             self.target.set_dimensions(dim)
@@ -318,13 +491,22 @@ class CosymAnalysis(symmetry_base, Subject):
                 max_iterations=self.params.minimization.max_iterations,
                 max_calls=min(20, max_calls) if max_calls else max_calls,
             )
-
+            self._principal_component_analysis()
             dimensions.append(dim)
             functional.append(
                 self.target.compute_functional_score_for_dimension_assessment(
                     self.minimizer.x, outlier_rejection
                 )
             )
+            decision = det.update(
+                functional[-1], np.array(self.explained_variance_ratio)
+            )
+            if decision is not None:
+                # decision is 1-based index of first point after the drop
+                logger.info(f"Step change detected at dimension {decision}")
+                self.target.set_dimensions(decision)
+                logger.info("Using %i dimensions for analysis", self.target.dim)
+                return dimensions, functional
 
         # Find the elbow point of the curve, in the same manner as that used by
         # distl spotfinder for resolution method 1 (Zhang et al 2006).
