@@ -139,7 +139,7 @@ def piecewise_constant_bic(y: np.ndarray) -> Tuple[int, float]:
     Single-changepoint detection by Bayesian Information Criterion (BIC) for a piecewise-constant model.
 
     Returns:
-      - k_best (int, 0-based): index of the FIRST point in the second segment (change between k-1 and k)
+      - k_best (int, 0-based): index of the first point in the second segment (change between k-1 and k)
       - delta_bic (float): BIC(no-change) - BIC(two-segment); larger => stronger evidence
 
     Notes:
@@ -169,6 +169,8 @@ def piecewise_constant_bic(y: np.ndarray) -> Tuple[int, float]:
 
     # Return the best split and the evidence strength
     delta_bic = bic1 - best_bic
+    print(f"Best k: {best_k}")
+    print(f"delta BIC:  {delta_bic}")
     return best_k, float(delta_bic)
 
 
@@ -188,7 +190,7 @@ class RefreshedBDetector:
 
     def __init__(
         self,
-        delta_bic_min: float = 2.0,  # strength of evidence required
+        delta_bic_min: float = 5.0,  # strength of evidence required
         post_eps: float = 0.10,  # tail mean <= (1 + post_eps) * first tail value
         min_tail_points: int = 2,  # require at least this many points in the tail
         gate_rel_variance_ratio_init: float = 0.5,  # need >=50% drop at first step to accept k=2
@@ -254,7 +256,7 @@ class RefreshedBDetector:
             ):
                 return None
 
-        return k0 + 1  # convert to 1-based dimension index
+        return k0 +1 # convert to 1-based dimension index
 
     def update(
         self, functional_current: float, variance_ratios_current: np.ndarray
@@ -474,7 +476,7 @@ class CosymAnalysis(symmetry_base, Subject):
         functional = []
 
         det = RefreshedBDetector(
-            delta_bic_min=2.0,
+            delta_bic_min=5.0,
             post_eps=0.10,
             min_tail_points=2,
             gate_rel_variance_ratio_init=0.5,
@@ -498,13 +500,15 @@ class CosymAnalysis(symmetry_base, Subject):
                     self.minimizer.x, outlier_rejection
                 )
             )
+            print(f"Functional: {functional[-1]}")
             decision = det.update(
                 functional[-1], np.array(self.explained_variance_ratio)
             )
             if decision is not None:
                 # decision is 1-based index of first point after the drop
                 logger.info(f"Step change detected at dimension {decision}")
-                self.target.set_dimensions(decision)
+                to_set = max(2, decision-1)
+                self.target.set_dimensions(to_set)
                 logger.info("Using %i dimensions for analysis", self.target.dim)
                 return dimensions, functional
 
