@@ -156,25 +156,26 @@ def piecewise_constant_bic(y: np.ndarray) -> Tuple[int, float]:
 
     best_k = 1
     best_bic = float("inf")
-
+    logger.debug(f"Testing dimension {n}")
     # Try every split k = 1..n-1
     for k in range(1, n):
         mu1 = y[:k].mean()
         mu2 = y[k:].mean()
         sse = ((y[:k] - mu1) ** 2).sum() + ((y[k:] - mu2) ** 2).sum()
         bic2 = n * np.log(sse / n if sse > 0 else 1e-12) + 2 * np.log(n)
+        logger.debug(f"K: {k} BIC1: {bic1} BIC2: {bic2}")
         if bic2 < best_bic:
             best_bic = bic2
             best_k = k
 
     # Return the best split and the evidence strength
     delta_bic = bic1 - best_bic
-    print(f"Best k: {best_k}")
-    print(f"delta BIC:  {delta_bic}")
+    logger.info(f"Best k: {best_k}")
+    logger.info(f"delta BIC:  {delta_bic}")
     return best_k, float(delta_bic)
 
 
-class RefreshedBDetector:
+class ChangeDetector:
     """
     Snapshot-wise drop detector for refreshed variance-ratio lists, using:
       - Bayesian Information Criterion (BIC) single-changepoint model on the current variance-ratio list
@@ -190,7 +191,7 @@ class RefreshedBDetector:
 
     def __init__(
         self,
-        delta_bic_min: float = 5.0,  # strength of evidence required
+        delta_bic_min: float = 10.0,  # strength of evidence required
         post_eps: float = 0.10,  # tail mean <= (1 + post_eps) * first tail value
         min_tail_points: int = 2,  # require at least this many points in the tail
         gate_rel_variance_ratio_init: float = 0.5,  # need >=50% drop at first step to accept k=2
@@ -198,22 +199,25 @@ class RefreshedBDetector:
         consensus_snapshots: int = 2,  # require same assessed dimension across last S snapshots
     ):
         self.delta_bic_min = delta_bic_min
-        self.post_eps = post_eps
-        self.min_tail_points = min_tail_points
+        #self.post_eps = post_eps
+        #self.min_tail_points = min_tail_points
         self.gate_rel_variance_ratio_init = gate_rel_variance_ratio_init
         self.gate_rel_functional_init = gate_rel_functional_init
         self.consensus_snapshots = consensus_snapshots
 
         # Stored functional values (only first two matter for the initial-step gate)
-        self._f_first: Optional[float] = None
-        self._f_second: Optional[float] = None
+        #self._f_first: Optional[float] = None
+        #self._f_second: Optional[float] = None
+        self._functional_values = []
         self._dim_count: int = 0  # how many dimensions processed so far
 
         # History of k predictions (1-based) for consensus
-        self._history: List[Optional[int]] = []
+        self._history_bic: List[Optional[int]] = []
+        self._history_elbow: List[Optional[int]] = []
 
     def _transform_variance_ratios(self, arr: np.ndarray) -> np.ndarray:
         # Apply a logit transform to handle values near 1 and 0.
+        return arr
         eps = 1e-6
         clipped = np.clip(arr, eps, 1 - eps)
         return np.log(clipped / (1 - clipped))
@@ -224,25 +228,25 @@ class RefreshedBDetector:
         Returns 1-based index of first point after the drop, or None.
         """
         n = len(variance_ratios)
-        if n < 3:
-            return None
+        if n < 4:
+            return None, 0
 
         y = self._transform_variance_ratios(variance_ratios.astype(float))
         k0, dBIC = piecewise_constant_bic(
             y
         )  # k0 is 0-based index of first point in second segment
-        if dBIC < self.delta_bic_min:
-            return None
+        #if dBIC < self.delta_bic_min:
+        #    return None
 
         # Tail stability
-        tail = variance_ratios[k0:]
-        if len(tail) < self.min_tail_points:
-            return None
-        if np.mean(tail) > tail[0] * (1 + self.post_eps):
-            return None
+        #tail = variance_ratios[k0:]
+        #if len(tail) < self.min_tail_points:
+        #    return None
+        #if np.mean(tail) > tail[0] * (1 + self.post_eps):
+        #    return None
 
         # First-step gate (only if k0 corresponds to 1-based k=2)
-        if k0 == 1:
+        '''if k0 == 1:
             # Need two functional values and first two variance ratios
             if self._f_first is None or self._f_second is None:
                 return None  # cannot gate; wait until we have two functional values
@@ -254,9 +258,9 @@ class RefreshedBDetector:
                 (rel_b <= -self.gate_rel_variance_ratio_init)
                 and (rel_a >= self.gate_rel_functional_init)
             ):
-                return None
+                return None'''
 
-        return k0 +1 # convert to 1-based dimension index
+        return max(2, k0), dBIC # convert to 1-based dimension index
 
     def update(
         self, functional_current: float, variance_ratios_current: np.ndarray
@@ -266,37 +270,74 @@ class RefreshedBDetector:
         Returns the 1-based dimension index when consensus is achieved, else None.
         """
         # Track dimension count and the first two 'a' values
+        self._functional_values.append(functional_current)
         self._dim_count += 1
-        if self._dim_count == 1:
+        '''if self._dim_count == 1:
             self._f_first = functional_current
         elif self._dim_count == 2 and self._f_second is None:
-            self._f_second = functional_current
+            self._f_second = functional_current'''
 
         # Run snapshot detection on current b list
-        k_snapshot = self._detect_on_snapshot(
+        k_snapshot, dBic = self._detect_on_snapshot(
             np.asarray(variance_ratios_current, dtype=float)
         )
-        self._history.append(k_snapshot)
+        self._history_bic.append(k_snapshot)
+        if self._dim_count > 3:
+            elbow = elbow_point(list(range(1,self._dim_count+1)), self._functional_values)
+            logger.info(f"Current elbow point : {elbow}")
+            self._history_elbow.append(int(elbow))
 
         # Keep last few entries for minimal memory
         keep = max(3, self.consensus_snapshots + 1)
-        if len(self._history) > keep:
-            self._history = self._history[-keep:]
+        if len(self._history_bic) > keep:
+            self._history_bic = self._history_bic[-keep:]
 
         # Consensus check
         if self.consensus_snapshots <= 1:
             return k_snapshot
 
-        tail = self._history[-self.consensus_snapshots :]
+        tail = self._history_bic[-self.consensus_snapshots :]
+        tail_elbow = self._history_elbow[-self.consensus_snapshots :]
+        logger.info(tail)
+        logger.info(tail_elbow)
         if (
             len(tail) == self.consensus_snapshots
             and all(t is not None for t in tail)
             and len(set(tail)) == 1
+            and dBic > self.delta_bic_min
         ):
-            return tail[-1]
+            if (
+                len(tail_elbow) == self.consensus_snapshots
+                and all(t is not None for t in tail_elbow)
+                and len(set(tail_elbow)) == 1
+            ):
+                if (abs(tail_elbow[-1] - tail[-1]) <= 1):
+                    return max(tail[-1], tail_elbow[-1])
 
         return None
 
+def elbow_point(dimensions, functional):
+    x = np.array(dimensions)
+    y = np.array(functional)
+    slopes = (y[-1] - y[:-1]) / (x[-1] - x[:-1])
+    p_m = slopes.argmin()
+
+    x1 = matrix.col((x[p_m], y[p_m]))
+    x2 = matrix.col((x[-1], y[-1]))
+
+    gaps = []
+    v = matrix.col(((x2[1] - x1[1]), -(x2[0] - x1[0]))).normalize()
+
+    for i in range(p_m, len(x)):
+        x0 = matrix.col((x[i], y[i]))
+        r = x1 - x0
+        g = abs(v.dot(r))
+        gaps.append(g)
+
+    p_g = np.array(gaps).argmax()
+
+    x_g = x[p_g + p_m]
+    return x_g
 
 class CosymAnalysis(symmetry_base, Subject):
     """Perform cosym analysis.
@@ -475,8 +516,8 @@ class CosymAnalysis(symmetry_base, Subject):
         dimensions = []
         functional = []
 
-        det = RefreshedBDetector(
-            delta_bic_min=5.0,
+        det = ChangeDetector(
+            delta_bic_min=10.0,
             post_eps=0.10,
             min_tail_points=2,
             gate_rel_variance_ratio_init=0.5,
@@ -500,42 +541,27 @@ class CosymAnalysis(symmetry_base, Subject):
                     self.minimizer.x, outlier_rejection
                 )
             )
-            print(f"Functional: {functional[-1]}")
+            logger.info(f"Functional: {functional[-1]}")
             decision = det.update(
                 functional[-1], np.array(self.explained_variance_ratio)
             )
+            '''try:
+                x_g = elbow_point(dimensions, functional)
+                logger.info(f"current elbow point : {x_g}")
+            except Exception:
+                logger.info("Unable to fit elbow")'''
             if decision is not None:
                 # decision is 1-based index of first point after the drop
                 logger.info(f"Step change detected at dimension {decision}")
-                to_set = max(2, decision-1)
-                self.target.set_dimensions(to_set)
+                #to_set = max(2, decision-1)
+                self.target.set_dimensions(decision)
                 logger.info("Using %i dimensions for analysis", self.target.dim)
                 return dimensions, functional
 
         # Find the elbow point of the curve, in the same manner as that used by
         # distl spotfinder for resolution method 1 (Zhang et al 2006).
         # See also dials/algorithms/spot_finding/per_image_analysis.py
-
-        x = np.array(dimensions)
-        y = np.array(functional)
-        slopes = (y[-1] - y[:-1]) / (x[-1] - x[:-1])
-        p_m = slopes.argmin()
-
-        x1 = matrix.col((x[p_m], y[p_m]))
-        x2 = matrix.col((x[-1], y[-1]))
-
-        gaps = []
-        v = matrix.col(((x2[1] - x1[1]), -(x2[0] - x1[0]))).normalize()
-
-        for i in range(p_m, len(x)):
-            x0 = matrix.col((x[i], y[i]))
-            r = x1 - x0
-            g = abs(v.dot(r))
-            gaps.append(g)
-
-        p_g = np.array(gaps).argmax()
-
-        x_g = x[p_g + p_m]
+        x_g = elbow_point(dimensions, functional)
 
         logger.info(
             dials.util.tabulate(
@@ -612,7 +638,7 @@ class CosymAnalysis(symmetry_base, Subject):
         )
         logger.info(
             "Explained variance ratio: "
-            + ", ".join(["%.2g" % v for v in pca.explained_variance_ratio_])
+            + ", ".join(["%.4g" % v for v in pca.explained_variance_ratio_])
         )
         self.explained_variance = pca.explained_variance_
         self.explained_variance_ratio = pca.explained_variance_ratio_
