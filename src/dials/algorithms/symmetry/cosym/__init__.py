@@ -175,7 +175,7 @@ def piecewise_constant_bic(y: np.ndarray) -> Tuple[int, float]:
     return best_k, float(delta_bic)
 
 
-def broken_stick_thresholds(p: int) -> np.ndarray:
+'''def broken_stick_thresholds(p: int) -> np.ndarray:
     """Return Broken–Stick thresholds b_k for k=1..p."""
     # b_k = (1/p) * sum_{i=k}^p (1/i)
     H = np.array([np.sum(1.0/np.arange(k, p+1)) for k in range(1, p+1)], dtype=float)
@@ -190,7 +190,7 @@ def broken_stick_mask(vr: np.ndarray) -> np.ndarray:
 
 def broken_stick_keep_count(vr: np.ndarray) -> int:
     """Return the number of components retained by the Broken–Stick rule."""
-    return int(np.sum(broken_stick_mask(vr)))
+    return int(np.sum(broken_stick_mask(vr)))'''
 
 def elbow_point(dimensions, functional) -> int:
     """
@@ -250,7 +250,7 @@ class CorrelationChangeDetector:
         self._history_broken_stick: List[Optional[int]] = []
         self._history_elbow: List[Optional[int]] = []
 
-    def _detect_on_snapshot(self, variance_ratios: np.ndarray) -> Optional[int]:
+    '''def _detect_on_snapshot(self, variance_ratios: np.ndarray) -> Optional[int]:
         """
         Run BIC detection + tail stability on the current variance ratio list.
         Returns 1-based index of first point after the drop, or None.
@@ -267,7 +267,27 @@ class CorrelationChangeDetector:
         ## points at a distance of ~1.
         n_keep = broken_stick_keep_count(keeps) + 1 
 
-        return n_keep
+        return n_keep'''
+    
+
+    def _coverage_k(self, vr: np.ndarray) -> Optional[int]:
+        vr = np.asarray(vr, dtype=float)
+        # Normalize defensively if sum is close to 1
+        s = vr.sum()
+        if abs(s - 1.0) <= 0.05:
+            vr = vr / s
+        # Ensure non-increasing
+        if not np.all(vr[:-1] >= vr[1:]):
+            vr = np.sort(vr)[::-1]
+        # Small p guard
+        if len(vr) == 0:
+            return None
+        cum = np.cumsum(vr)
+        k_idx = np.searchsorted(cum, 0.95, side='left')+1
+        if k_idx >= len(vr):
+            return len(vr)
+        return int(k_idx + 1)  # return 1-based count
+
 
     def update(
         self, functional_current: float, variance_ratios_current: np.ndarray
@@ -281,10 +301,11 @@ class CorrelationChangeDetector:
         self._dim_count += 1
 
         # Run snapshot detection on current variance ratio list
-        nkeeps = self._detect_on_snapshot(
+        '''nkeeps = self._detect_on_snapshot(
             np.asarray(variance_ratios_current, dtype=float)
-        )
-        self._history_broken_stick.append(nkeeps)
+        )'''
+        k_cov = self._coverage_k(np.asarray(variance_ratios_current, dtype=float))
+        self._history_broken_stick.append(k_cov)
         if self._dim_count > 3:
             elbow = elbow_point(list(range(1,self._dim_count+1)), self._functional_values)
             logger.info(f"Current elbow point : {elbow}")
@@ -297,7 +318,7 @@ class CorrelationChangeDetector:
 
         # Consensus check
         if self.consensus_snapshots <= 1:
-            return nkeeps
+            return k_cov
 
         tail = self._history_broken_stick[-self.consensus_snapshots :]
         tail_elbow = self._history_elbow[-self.consensus_snapshots :]
@@ -313,10 +334,7 @@ class CorrelationChangeDetector:
                 and all(t is not None for t in tail_elbow)
                 and len(set(tail_elbow)) == 1
             ):
-                if (abs(tail_elbow[-1] - tail[-1]) <= 1):
-                    # Having one too few dimensions is much worse than one too
-                    # many, so go with the higher.
-                    return max(tail[-1], tail_elbow[-1])
+                return max(tail[-1], tail_elbow[-1])
 
         return None
 
