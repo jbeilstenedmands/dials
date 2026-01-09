@@ -258,6 +258,7 @@ class CorrelationMatrix:
             ) = self.cosym_analysis._determine_dimensions(
                 dims_to_test,
                 outlier_rejection=self.params.dimensionality_assessment.outlier_rejection,
+                pca_variance_model="broken-stick",
             )
         self.cosym_analysis._optimise(
             self.cosym_analysis.params.minimization.engine,
