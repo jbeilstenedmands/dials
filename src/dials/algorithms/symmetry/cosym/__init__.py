@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 import logging
 import math
-from typing import List, Optional, Tuple
+from enum import Enum
 
 import numpy as np
 from sklearn.neighbors import NearestNeighbors
@@ -20,15 +20,14 @@ import iotbx.phil
 from cctbx import miller, sgtbx
 from cctbx.sgtbx.lattice_symmetry import metric_subgroups
 from libtbx import Auto
-from scitbx import matrix
 from scitbx.array_family import flex
 
 import dials.util
 import dials.util.system
 from dials.algorithms.indexing.symmetry import find_matching_symmetry
 from dials.algorithms.symmetry import median_unit_cell, symmetry_base
+from dials.algorithms.symmetry.cosym import dimension_analysis, target
 from dials.algorithms.symmetry.cosym import engine as cosym_engine
-from dials.algorithms.symmetry.cosym import target
 from dials.algorithms.symmetry.laue_group import ScoreCorrelationCoefficient
 from dials.util.observer import Subject
 from dials.util.reference import intensities_from_reference_file
@@ -134,307 +133,9 @@ phil_scope = iotbx.phil.parse(
 )
 
 
-def piecewise_constant_bic(y: np.ndarray) -> Tuple[int, float]:
-    """
-    Single-changepoint detection by Bayesian Information Criterion (BIC) for a piecewise-constant model.
-
-    Returns:
-      - k_best (int, 0-based): index of the first point in the second segment (change between k-1 and k)
-      - delta_bic (float): BIC(no-change) - BIC(two-segment); larger => stronger evidence
-
-    Notes:
-      - SSE-based Gaussian-likelihood approximation with BIC penalty.
-    """
-    n = len(y)
-    if n < 3:
-        return 1, 0.0
-
-    # One-segment fit (global mean)
-    mu = y.mean()
-    sse0 = ((y - mu) ** 2).sum()
-    bic1 = n * np.log(sse0 / n if sse0 > 0 else 1e-12) + 1 * np.log(n)
-
-    best_k = 1
-    best_bic = float("inf")
-    logger.debug(f"Testing dimension {n}")
-    # Try every split k = 1..n-1
-    for k in range(1, n):
-        mu1 = y[:k].mean()
-        mu2 = y[k:].mean()
-        sse = ((y[:k] - mu1) ** 2).sum() + ((y[k:] - mu2) ** 2).sum()
-        bic2 = n * np.log(sse / n if sse > 0 else 1e-12) + 2 * np.log(n)
-        logger.debug(f"K: {k} BIC1: {bic1} BIC2: {bic2}")
-        if bic2 < best_bic:
-            best_bic = bic2
-            best_k = k
-
-    # Return the best split and the evidence strength
-    delta_bic = bic1 - best_bic
-    logger.info(f"Best k: {best_k}")
-    logger.info(f"delta BIC:  {delta_bic}")
-    return best_k, float(delta_bic)
-
-
-'''def broken_stick_thresholds(p: int) -> np.ndarray:
-    """Return Broken–Stick thresholds b_k for k=1..p."""
-    # b_k = (1/p) * sum_{i=k}^p (1/i)
-    H = np.array([np.sum(1.0/np.arange(k, p+1)) for k in range(1, p+1)], dtype=float)
-    return H / p
-
-def broken_stick_mask(vr: np.ndarray) -> np.ndarray:
-    """Return a boolean mask of which components exceed the Broken–Stick threshold."""
-    vr = np.asarray(vr, dtype=float)
-    bs = broken_stick_thresholds(len(vr))
-    return vr > bs
-
-
-def broken_stick_keep_count(vr: np.ndarray) -> int:
-    """Return the number of components retained by the Broken–Stick rule."""
-    return int(np.sum(broken_stick_mask(vr)))'''
-
-def elbow_point(dimensions, functional) -> int:
-    """
-    Return the 1-based index of the elbow using a geometric method
-    """
-    x = np.array(dimensions)
-    y = np.array(functional)
-
-    n = len(x)
-    if n < 3:
-        return int(x[-1])  # trivial fallback
-    
-    # slopes from i to last point
-    dx = (x[-1] - x[:-1])
-    dy = (y[-1] - y[:-1])
-    # avoid /0; if dx==0, set slope to +inf
-    slopes = np.where(np.abs(dx) > 0, dy / dx, np.sign(dy) * np.inf)
-    p_m = int(np.argmin(slopes))  # steepest descent
-
-
-    # line through P1 -> P2
-    P1 = np.array([x[p_m], y[p_m]], dtype=float)
-    P2 = np.array([x[-1],   y[-1]], dtype=float)
-    v = P2 - P1
-    if np.allclose(v, 0):
-        return int(x[p_m])
-    
-    # unit normal to v
-    nrm = np.array([ v[1], -v[0] ], dtype=float)
-    nrm /= np.linalg.norm(nrm)
-
-    # distances from points p_m..end to the line (signed projection onto normal)
-    Xi = np.column_stack([x[p_m:], y[p_m:]])
-    R = P1 - Xi
-    dists = np.abs(R @ nrm)
-    j = int(np.argmax(dists))
-    elbow = int(x[p_m + j])
-
-    return elbow
-
-
-class CorrelationChangeDetector:
-    """
-    Decide the number of significant components for a correlation-matrix PCA
-    using the Broken–Stick rule.
-
-    """
-    def __init__(
-        self,
-        consensus_snapshots: int = 2,  # require same assessed dimension across last S snapshots
-    ):
-        self._functional_values = []
-        self._dim_count: int = 0  # how many dimensions processed so far
-        self.consensus_snapshots = consensus_snapshots
-
-        # History of calculated values for consensus
-        self._history_broken_stick: List[Optional[int]] = []
-        self._history_elbow: List[Optional[int]] = []
-
-    '''def _detect_on_snapshot(self, variance_ratios: np.ndarray) -> Optional[int]:
-        """
-        Run BIC detection + tail stability on the current variance ratio list.
-        Returns 1-based index of first point after the drop, or None.
-        """
-        n = len(variance_ratios)
-        if n < 4:
-            return None
-
-        keeps = broken_stick_mask(variance_ratios.astype(float))
-
-        ## For the correlation matrix use case, we need to add one to the number of dimensions,
-        ## as the last dimension is always expected to have low variance (for good data) because it
-        ## is the component of the main signal, i.e. the direction from the origin to the cloud of
-        ## points at a distance of ~1.
-        n_keep = broken_stick_keep_count(keeps) + 1 
-
-        return n_keep'''
-    
-
-    def _coverage_k(self, vr: np.ndarray) -> Optional[int]:
-        vr = np.asarray(vr, dtype=float)
-        # Normalize defensively if sum is close to 1
-        s = vr.sum()
-        if abs(s - 1.0) <= 0.05:
-            vr = vr / s
-        # Ensure non-increasing
-        if not np.all(vr[:-1] >= vr[1:]):
-            vr = np.sort(vr)[::-1]
-        # Small p guard
-        if len(vr) == 0:
-            return None
-        cum = np.cumsum(vr)
-        k_idx = np.searchsorted(cum, 0.95, side='left')+1
-        if k_idx >= len(vr):
-            return len(vr)
-        return int(k_idx + 1)  # return 1-based count
-
-
-    def update(
-        self, functional_current: float, variance_ratios_current: np.ndarray
-    ) -> Optional[int]:
-        """
-        Update with the current dimension's 'a' (scalar) and the refreshed 'b' list (numpy array).
-        Returns the 1-based dimension index when consensus is achieved, else None.
-        """
-        # Track dimension count and the first two 'a' values
-        self._functional_values.append(functional_current)
-        self._dim_count += 1
-
-        # Run snapshot detection on current variance ratio list
-        '''nkeeps = self._detect_on_snapshot(
-            np.asarray(variance_ratios_current, dtype=float)
-        )'''
-        k_cov = self._coverage_k(np.asarray(variance_ratios_current, dtype=float))
-        self._history_broken_stick.append(k_cov)
-        if self._dim_count > 3:
-            elbow = elbow_point(list(range(1,self._dim_count+1)), self._functional_values)
-            logger.info(f"Current elbow point : {elbow}")
-            self._history_elbow.append(int(elbow))
-
-        # Keep last few entries for minimal memory
-        keep = max(3, self.consensus_snapshots + 1)
-        if len(self._history_broken_stick) > keep:
-            self._history_broken_stick = self._history_broken_stick[-keep:]
-
-        # Consensus check
-        if self.consensus_snapshots <= 1:
-            return k_cov
-
-        tail = self._history_broken_stick[-self.consensus_snapshots :]
-        tail_elbow = self._history_elbow[-self.consensus_snapshots :]
-        logger.info(tail)
-        logger.info(tail_elbow)
-        if (
-            len(tail) == self.consensus_snapshots
-            and all(t is not None for t in tail)
-            and len(set(tail)) == 1
-        ):
-            if (
-                len(tail_elbow) == self.consensus_snapshots
-                and all(t is not None for t in tail_elbow)
-                and len(set(tail_elbow)) == 1
-            ):
-                return max(tail[-1], tail_elbow[-1])
-
-        return None
-
-
-class ChangeDetector:
-    """
-    Snapshot-wise drop detector for refreshed variance-ratio lists, using:
-      - Bayesian Information Criterion (BIC) single-changepoint model on the current variance-ratio list
-      - Tail stability check
-      - Initial-step gate using functional values (only when the best change is at n_dims=2)
-      - Consensus across recent snapshots to stabilize final decision.
-
-    Call the update method after analysis at each dimension - returns the dimension number (i.e. 1-based index)
-    (first point after the drop) when consensus is achieved, otherwise returns None. Minimum possible
-    returned dimension is 2 (i.e., a drop immediately after the first element). Only the first two
-    functional values are used for the initial-step gate.
-    """
-
-    def __init__(
-        self,
-        delta_bic_min: float = 10.0,  # strength of evidence required
-        consensus_snapshots: int = 2,  # require same assessed dimension across last S snapshots
-    ):
-        self.delta_bic_min = delta_bic_min
-        self.consensus_snapshots = consensus_snapshots
-
-        self._functional_values = []
-        self._dim_count: int = 0  # how many dimensions processed so far
-
-        # History of calculated values for consensus
-        self._history_bic: List[Optional[int]] = []
-        self._history_elbow: List[Optional[int]] = []
-
-    def _detect_on_snapshot(self, variance_ratios: np.ndarray) -> Optional[int]:
-        """
-        Run BIC detection + tail stability on the current variance ratio list.
-        Returns 1-based index of first point after the drop, or None.
-        """
-        n = len(variance_ratios)
-        if n < 4:
-            return None, 0
-
-        k0, dBIC = piecewise_constant_bic(
-            variance_ratios.astype(float)
-        )
-
-        return max(2, k0), dBIC
-
-    def update(
-        self, functional_current: float, variance_ratios_current: np.ndarray
-    ) -> Optional[int]:
-        """
-        Update with the current dimension's 'a' (scalar) and the refreshed 'b' list (numpy array).
-        Returns the 1-based dimension index when consensus is achieved, else None.
-        """
-        # Track dimension count and the first two 'a' values
-        self._functional_values.append(functional_current)
-        self._dim_count += 1
-
-        # Run snapshot detection on current variance ratio list
-        k_snapshot, dBic = self._detect_on_snapshot(
-            np.asarray(variance_ratios_current, dtype=float)
-        )
-        self._history_bic.append(k_snapshot)
-        if self._dim_count > 3:
-            elbow = elbow_point(list(range(1,self._dim_count+1)), self._functional_values)
-            logger.info(f"Current elbow point : {elbow}")
-            self._history_elbow.append(int(elbow))
-
-        # Keep last few entries for minimal memory
-        keep = max(3, self.consensus_snapshots + 1)
-        if len(self._history_bic) > keep:
-            self._history_bic = self._history_bic[-keep:]
-
-        # Consensus check
-        if self.consensus_snapshots <= 1:
-            return k_snapshot
-
-        tail = self._history_bic[-self.consensus_snapshots :]
-        tail_elbow = self._history_elbow[-self.consensus_snapshots :]
-        logger.info(tail)
-        logger.info(tail_elbow)
-        if (
-            len(tail) == self.consensus_snapshots
-            and all(t is not None for t in tail)
-            and len(set(tail)) == 1
-            and dBic > self.delta_bic_min
-        ):
-            if (
-                len(tail_elbow) == self.consensus_snapshots
-                and all(t is not None for t in tail_elbow)
-                and len(set(tail_elbow)) == 1
-            ):
-                if (abs(tail_elbow[-1] - tail[-1]) <= 1):
-                    # Having one too few dimensions is much worse than one too
-                    # many, so go with the higher.
-                    return max(tail[-1], tail_elbow[-1])
-
-        return None
-
+class LivePCAVarianceModel(Enum):
+    NONE = 0
+    BIC = 1
 
 
 class CosymAnalysis(symmetry_base, Subject):
@@ -608,19 +309,23 @@ class CosymAnalysis(symmetry_base, Subject):
             nproc=self.params.nproc,
         )
 
-    def _determine_dimensions(self, dims_to_test, outlier_rejection=False, pca_variance_model="BIC"):
+    def _determine_dimensions(
+        self,
+        dims_to_test,
+        outlier_rejection=False,
+        pca_variance_model=LivePCAVarianceModel.NONE,
+    ):
         logger.info("=" * 80)
         logger.info("\nAutomatic determination of number of dimensions for analysis")
         dimensions = []
         functional = []
+        live_detector = None
 
-        if pca_variance_model == "BIC":
-            det = ChangeDetector(
+        if pca_variance_model == LivePCAVarianceModel.BIC:
+            live_detector = dimension_analysis.ChangeDetector(
                 delta_bic_min=10.0,
                 consensus_snapshots=2,
             )
-        else:
-            det = CorrelationChangeDetector(consensus_snapshots=2)
 
         for dim in range(1, dims_to_test + 1):
             logger.info(f"Testing dimension: {dim}/{dims_to_test}")
@@ -631,28 +336,29 @@ class CosymAnalysis(symmetry_base, Subject):
                 max_iterations=self.params.minimization.max_iterations,
                 max_calls=min(20, max_calls) if max_calls else max_calls,
             )
-            self._principal_component_analysis()
             dimensions.append(dim)
             functional.append(
                 self.target.compute_functional_score_for_dimension_assessment(
                     self.minimizer.x, outlier_rejection
                 )
             )
-            logger.info(f"Functional: {functional[-1]}")
-            decision = det.update(
-                functional[-1], np.array(self.explained_variance_ratio)
-            )
+            if live_detector:
+                logger.info(f"Functional: {functional[-1]:.2f}")
+                self._principal_component_analysis()
+                decision = live_detector.update(
+                    functional[-1], np.array(self.explained_variance_ratio)
+                )
 
-            if decision is not None:
-                logger.info(f"Step change detected at dimension {decision}")
-                self.target.set_dimensions(decision)
-                logger.info("Using %i dimensions for analysis", self.target.dim)
-                return dimensions, functional
+                if decision is not None:
+                    logger.info(f"Step change detected at dimension {decision}")
+                    self.target.set_dimensions(decision)
+                    logger.info("Using %i dimensions for analysis", self.target.dim)
+                    return dimensions, functional
 
         # Find the elbow point of the curve, in the same manner as that used by
         # distl spotfinder for resolution method 1 (Zhang et al 2006).
         # See also dials/algorithms/spot_finding/per_image_analysis.py
-        x_g = elbow_point(dimensions, functional)
+        x_g = dimension_analysis.elbow_point(dimensions, functional)
 
         logger.info(
             dials.util.tabulate(
@@ -675,7 +381,9 @@ class CosymAnalysis(symmetry_base, Subject):
     def run(self):
         self._intialise_target()
         if self.params.dimensions is Auto and self.target.dim != 2:
-            self._determine_dimensions(self.target.dim)
+            self._determine_dimensions(
+                self.target.dim, pca_variance_model=LivePCAVarianceModel.BIC
+            )
         self._optimise(
             self.params.minimization.engine,
             max_iterations=self.params.minimization.max_iterations,
