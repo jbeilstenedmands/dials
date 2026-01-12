@@ -1,11 +1,17 @@
 from __future__ import annotations
 
 import logging
+from enum import Enum
 from typing import List, Optional, Tuple
 
 import numpy as np
 
 logger = logging.getLogger(__name__)
+
+
+class LivePCAVarianceModel(Enum):
+    NONE = 0
+    BIC = 1
 
 
 def piecewise_constant_bic(y: np.ndarray) -> Tuple[int, float]:
@@ -37,19 +43,19 @@ def piecewise_constant_bic(y: np.ndarray) -> Tuple[int, float]:
         mu2 = y[k:].mean()
         sse = ((y[:k] - mu1) ** 2).sum() + ((y[k:] - mu2) ** 2).sum()
         bic2 = n * np.log(sse / n if sse > 0 else 1e-12) + 2 * np.log(n)
-        logger.info(f"K: {k} BIC1: {bic1} BIC2: {bic2}")
+        logger.debug(f"K: {k} BIC1: {bic1} BIC2: {bic2}")
         if bic2 < best_bic:
             best_bic = bic2
             best_k = k
 
     # Return the best split and the evidence strength
     delta_bic = bic1 - best_bic
-    logger.info(f"Best k: {best_k}")
-    logger.info(f"delta BIC:  {delta_bic}")
+    logger.debug(f"Best k: {best_k}")
+    logger.debug(f"delta BIC:  {delta_bic}")
     return best_k, float(delta_bic)
 
 
-def elbow_point(dimensions, functional) -> int:
+def elbow_point(dimensions: List[int], functional: List[float]) -> int:
     """
     Return the 1-based index of the elbow using a geometric method
     """
@@ -88,25 +94,23 @@ def elbow_point(dimensions, functional) -> int:
     return elbow
 
 
-class ChangeDetector:
+class DimensionAssessor:
     """
-    Snapshot-wise drop detector for refreshed variance-ratio lists, using:
-      - Bayesian Information Criterion (BIC) single-changepoint model on the current variance-ratio list
-      - Tail stability check
-      - Initial-step gate using functional values (only when the best change is at n_dims=2)
+    Determine dimension at which no more useful information can be obtained using the following approaches
+      - Bayesian Information Criterion (BIC) single-changepoint model on the PCA variance-ratio list
+      - Elbow point determination on the functional vs dimension data.
       - Consensus across recent snapshots to stabilize final decision.
 
     Call the update method after analysis at each dimension - returns the dimension number (i.e. 1-based index)
     (first point after the drop) when consensus is achieved, otherwise returns None. Minimum possible
-    returned dimension is 2 (i.e., a drop immediately after the first element). Only the first two
-    functional values are used for the initial-step gate.
+    returned dimension is 2 (i.e., a drop immediately after the first element).
     """
 
     def __init__(
         self,
         delta_bic_min: float = 10.0,  # strength of evidence required
         consensus_snapshots: int = 2,  # require same assessed dimension across last S snapshots
-        test_start_dimension: int = 4,
+        test_start_dimension: int = 4,  # start determining the elbow point and BIC at this number of dimensions
     ):
         self.delta_bic_min = delta_bic_min
         self.consensus_snapshots = consensus_snapshots

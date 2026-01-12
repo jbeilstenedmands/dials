@@ -11,7 +11,6 @@ from __future__ import annotations
 import json
 import logging
 import math
-from enum import Enum
 
 import numpy as np
 from sklearn.neighbors import NearestNeighbors
@@ -131,11 +130,6 @@ phil_scope = iotbx.phil.parse(
 """,
     process_includes=True,
 )
-
-
-class LivePCAVarianceModel(Enum):
-    NONE = 0
-    BIC = 1
 
 
 class CosymAnalysis(symmetry_base, Subject):
@@ -313,7 +307,7 @@ class CosymAnalysis(symmetry_base, Subject):
         self,
         dims_to_test,
         outlier_rejection=False,
-        pca_variance_model=LivePCAVarianceModel.NONE,
+        live_pca_variance_model=dimension_analysis.LivePCAVarianceModel.NONE,
     ):
         logger.info("=" * 80)
         logger.info("\nAutomatic determination of number of dimensions for analysis")
@@ -321,8 +315,8 @@ class CosymAnalysis(symmetry_base, Subject):
         functional = []
         live_detector = None
 
-        if pca_variance_model == LivePCAVarianceModel.BIC:
-            live_detector = dimension_analysis.ChangeDetector(
+        if live_pca_variance_model == dimension_analysis.LivePCAVarianceModel.BIC:
+            live_detector = dimension_analysis.DimensionAssessor(
                 delta_bic_min=10.0,
                 consensus_snapshots=2,
             )
@@ -382,7 +376,8 @@ class CosymAnalysis(symmetry_base, Subject):
         self._intialise_target()
         if self.params.dimensions is Auto and self.target.dim != 2:
             self._determine_dimensions(
-                self.target.dim, pca_variance_model=LivePCAVarianceModel.BIC
+                self.target.dim,
+                live_pca_variance_model=dimension_analysis.LivePCAVarianceModel.BIC,
             )
         self._optimise(
             self.params.minimization.engine,
