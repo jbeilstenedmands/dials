@@ -5,7 +5,7 @@ from __future__ import annotations
 import concurrent.futures
 import copy
 import logging
-
+import time
 import numpy as np
 from ordered_set import OrderedSet
 from scipy import sparse
@@ -411,12 +411,15 @@ class Target:
         Returns:
           f (float): The value of the target function at coordinates `x`.
         """
+        t1 = time.time()
         assert (x.size // self.dim) == (len(self._lattices) * len(self.sym_ops))
         x = x.reshape((self.dim, x.size // self.dim))
         elements = np.square(self.rij_matrix - x.T @ x)
         if self.wij_matrix is not None:
             np.multiply(self.wij_matrix, elements, out=elements)
         f = 0.5 * elements.sum()
+        t2 = time.time()
+        #logger.info(f"Time to compute functional {t2-t1:.6f}s")
         return f
 
     def compute_functional_score_for_dimension_assessment(
@@ -473,12 +476,15 @@ class Target:
           f: The value of the target function at coordinates `x`.
           grad: The gradients of the target function with respect to the parameters.
         """
+        t1 = time.time()
         x = x.reshape((self.dim, x.size // self.dim))
         if self.wij_matrix is not None:
             wrij_matrix = np.multiply(self.wij_matrix, self.rij_matrix)
             grad = -2 * x @ (wrij_matrix - np.multiply(self.wij_matrix, x.T @ x))
         else:
             grad = -2 * x @ (self.rij_matrix - x.T @ x)
+        t2 = time.time()
+        #logger.info(f"Time to compute gradient {t2-t1:.6f}s")
         return grad.flatten()
 
     def curvatures(self, x: np.ndarray) -> np.ndarray:
@@ -494,12 +500,15 @@ class Target:
           curvs (np.ndarray):
           The curvature of the target function with respect to the parameters.
         """
+        t1 = time.time()
         if self.wij_matrix is not None:
             wij = self.wij_matrix
         else:
             wij = np.ones(self.rij_matrix.shape)
         x = x.reshape((self.dim, x.size // self.dim))
         curvs = 2 * np.square(x) @ wij
+        t2 = time.time()
+        #logger.info(f"Time to compute curvs {t2-t1:.6f}s")
         return curvs.flatten()
 
     def curvatures_fd(self, x: np.ndarray, eps=1e-6) -> np.ndarray:

@@ -340,7 +340,8 @@ class CosymAnalysis(symmetry_base, Subject):
                 logger.info(f"Functional: {functional[-1]:.2f}")
                 self._principal_component_analysis()
                 decision = live_detector.update(
-                    functional[-1], np.array(self.explained_variance_ratio)
+                    functional[-1], np.array(self.explained_variance_ratio),
+                    self.pca_components, self.pca_mean
                 )
 
                 if decision is not None:
@@ -436,10 +437,20 @@ class CosymAnalysis(symmetry_base, Subject):
         )
         self.explained_variance = pca.explained_variance_
         self.explained_variance_ratio = pca.explained_variance_ratio_
-        if self.target.dim > 3 and not cluster:
-            pca.n_components = 3
+        #if self.target.dim > 3 and not cluster:
+        #    pca.n_components = 3
+        '''import copy
+        with open("cosym_coords.json", "w") as f:
+            shape = self.coords.shape
+            data = list(copy.deepcopy(self.coords).flatten())
+            f.write(json.dumps({"data" : data, "shape":shape}))'''
         self.coords_reduced = pca.fit_transform(self.coords)
+        '''with open("cosym_coords.json", "w") as f:
+            shape = self.coords_reduced.shape
+            data = list(self.coords_reduced.flatten())
+            f.write(json.dumps({"data" : data, "shape":shape}))'''
         self.pca_components = pca.components_
+        self.pca_mean = pca.mean_
 
     @Subject.notify_event(event="analysed_symmetry")
     def _analyse_symmetry(self):

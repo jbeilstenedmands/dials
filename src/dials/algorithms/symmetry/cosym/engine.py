@@ -8,6 +8,7 @@ import scipy.optimize
 
 import scitbx.lbfgs
 from scitbx.array_family import flex
+import time
 
 logger = logging.getLogger(__name__)
 

@@ -91,6 +91,29 @@ def elbow_point(dimensions: List[int], functional: List[float]) -> int:
     j = int(np.argmax(dists))
     elbow = int(x[p_m + j])
 
+    #strength metric
+
+    y_norm = (y - y.min()) / (y.max() - y.min()) if y.max() > y.min() else np.zeros_like(y)
+
+    # curvature at elbow
+    #curvature = np.abs(y_norm[elbow+1] - 2*y_norm[elbow] + y_norm[elbow-1])
+
+    '''P1n = np.array([xn[p_m], yn[p_m]])
+    P2n = np.array([xn[-1], yn[-1]])
+    vn = P2n - P1n
+    vn_norm = np.linalg.norm(vn)
+    if vn_norm > 0:
+        nrm_n = np.array([vn[1], -vn[0]]) / vn_norm
+        Xn = np.column_stack([xn[p_m:], yn[p_m:]])
+        Rn = P1n - Xn
+        d_n = np.abs(Rn @ nrm_n)
+        unit_square_strength = float(np.max(d_n))  # 0 .. ~0.707
+    else:
+        unit_square_strength = 0.0'''
+
+
+    #print(f"Curv {curvature}")
+
     return elbow
 
 
@@ -134,17 +157,30 @@ class DimensionAssessor:
         return piecewise_constant_bic(variance_ratios.astype(float))
 
     def update(
-        self, functional_current: float, variance_ratios_current: np.ndarray
+        self, functional_current: float, variance_ratios_current: np.ndarray, pca_components, pca_mean
     ) -> Optional[int]:
         """
         Returns the 1-based dimension index when consensus is achieved, else None.
         """
         self._functional_values.append(functional_current)
         self._dim_count += 1
+        if self._dim_count > 1:
+            angles = []
+            for c in pca_components:
+                angle = (180/3.14)*np.arccos(np.dot(c, pca_mean)/((np.linalg.norm(c) * np.linalg.norm(pca_mean))))
+                angles.append(float(abs(angle)))
+                #print(pca_mean, c)
+            #print(angles)
+            #print(angles.index(min(angles)))
+            if angles.index(min(angles)) != len(angles)-1:
+                #i.e. not the last one:
+                print("High variance along principal direction")
+                return 2
+            
 
         # Run snapshot detection on current variance ratio list
         k_snapshot, dBic = self._detect_on_snapshot(
-            np.asarray(variance_ratios_current, dtype=float)
+            np.asarray(variance_ratios_current, dtype=float)[:-1]
         )
         k_snapshot += 1  # convert from index in list to number of dimensions.
         # i.e. k=1 means a step change between index 0 and 1, so we want to run
