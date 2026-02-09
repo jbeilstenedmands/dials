@@ -50,8 +50,8 @@ def piecewise_constant_bic(y: np.ndarray) -> Tuple[int, float]:
 
     # Return the best split and the evidence strength
     delta_bic = bic1 - best_bic
-    logger.debug(f"Best k: {best_k}")
-    logger.debug(f"delta BIC:  {delta_bic}")
+    logger.info(f"Best k: {best_k}")
+    logger.info(f"delta BIC:  {delta_bic}")
     return best_k, float(delta_bic)
 
 
@@ -168,17 +168,27 @@ class DimensionAssessor:
             angles = []
             for c in pca_components:
                 angle = (180/3.14)*np.arccos(np.dot(c, pca_mean)/((np.linalg.norm(c) * np.linalg.norm(pca_mean))))
-                angles.append(float(abs(angle)))
-                #print(pca_mean, c)
-            #print(angles)
-            #print(angles.index(min(angles)))
+                angle = abs(angle)
+                angle = min(angle, 180.0-angle)
+                angles.append(float(angle))
+            logger.info(f"pca_mean: {pca_mean}")
+            angles_str = ", ".join(f"{i:.4f}°" for i in angles)
+            logger.info(f"Angles between the pca component vector and the vector to the pca_mean: {angles_str}")
             if angles.index(min(angles)) != len(angles)-1:
                 #i.e. not the last one:
                 print("High variance along principal direction")
-                return 2
-            
+                if self._history_bic:
+                    return self._history_bic[-1]
+                return self._dim_count
+        
+        if self._dim_count > 1:
+            even_frac = 1.0 / (self._dim_count -1)
+            if all(abs((p - even_frac) / even_frac) < 0.05 for p in np.asarray(variance_ratios_current, dtype=float)[:-1]):
+                return None
 
         # Run snapshot detection on current variance ratio list
+        # if all of the variance ratios are approx equal to (1.0 / (dims -1)) - continue.
+
         k_snapshot, dBic = self._detect_on_snapshot(
             np.asarray(variance_ratios_current, dtype=float)[:-1]
         )
@@ -187,16 +197,16 @@ class DimensionAssessor:
         # eith 2 dimensions.
         self._history_bic.append(k_snapshot)
 
-        if self._dim_count >= self.test_start_dimension:
+        '''if self._dim_count >= self.test_start_dimension:
             elbow = elbow_point(
                 list(range(1, self._dim_count + 1)), self._functional_values
             )
-            logger.debug(f"Current elbow point : {elbow}")
-            self._history_elbow.append(int(elbow))
+            logger.info(f"Current elbow point : {elbow}")
+            self._history_elbow.append(int(elbow))'''
 
         # Consensus check
         tail = self._history_bic[-self.consensus_snapshots :]
-        tail_elbow = self._history_elbow[-self.consensus_snapshots :]
+        #tail_elbow = self._history_elbow[-self.consensus_snapshots :]
 
         if (
             len(tail) == self.consensus_snapshots
@@ -204,7 +214,8 @@ class DimensionAssessor:
             and len(set(tail)) == 1
             and dBic > self.delta_bic_min
         ):
-            if (
+            return tail[-1]
+            '''if (
                 len(tail_elbow) == self.consensus_snapshots
                 and all(t is not None for t in tail_elbow)
                 and len(set(tail_elbow)) == 1
@@ -212,6 +223,6 @@ class DimensionAssessor:
                 if abs(tail_elbow[-1] - tail[-1]) <= 1:
                     # Having one too few dimensions is much worse than one too
                     # many, so go with the higher.
-                    return max(tail[-1], tail_elbow[-1])
+                    return max(tail[-1], tail_elbow[-1])'''
 
         return None
