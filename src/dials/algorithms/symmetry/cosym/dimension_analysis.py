@@ -91,14 +91,16 @@ def elbow_point(dimensions: List[int], functional: List[float]) -> int:
     j = int(np.argmax(dists))
     elbow = int(x[p_m + j])
 
-    #strength metric
+    # strength metric
 
-    y_norm = (y - y.min()) / (y.max() - y.min()) if y.max() > y.min() else np.zeros_like(y)
+    y_norm = (
+        (y - y.min()) / (y.max() - y.min()) if y.max() > y.min() else np.zeros_like(y)
+    )
 
     # curvature at elbow
-    #curvature = np.abs(y_norm[elbow+1] - 2*y_norm[elbow] + y_norm[elbow-1])
+    # curvature = np.abs(y_norm[elbow+1] - 2*y_norm[elbow] + y_norm[elbow-1])
 
-    '''P1n = np.array([xn[p_m], yn[p_m]])
+    """P1n = np.array([xn[p_m], yn[p_m]])
     P2n = np.array([xn[-1], yn[-1]])
     vn = P2n - P1n
     vn_norm = np.linalg.norm(vn)
@@ -109,10 +111,9 @@ def elbow_point(dimensions: List[int], functional: List[float]) -> int:
         d_n = np.abs(Rn @ nrm_n)
         unit_square_strength = float(np.max(d_n))  # 0 .. ~0.707
     else:
-        unit_square_strength = 0.0'''
+        unit_square_strength = 0.0"""
 
-
-    #print(f"Curv {curvature}")
+    # print(f"Curv {curvature}")
 
     return elbow
 
@@ -157,7 +158,11 @@ class DimensionAssessor:
         return piecewise_constant_bic(variance_ratios.astype(float))
 
     def update(
-        self, functional_current: float, variance_ratios_current: np.ndarray, pca_components, pca_mean
+        self,
+        functional_current: float,
+        variance_ratios_current: np.ndarray,
+        pca_components,
+        pca_mean,
     ) -> Optional[int]:
         """
         Returns the 1-based dimension index when consensus is achieved, else None.
@@ -167,23 +172,30 @@ class DimensionAssessor:
         if self._dim_count > 1:
             angles = []
             for c in pca_components:
-                angle = (180/3.14)*np.arccos(np.dot(c, pca_mean)/((np.linalg.norm(c) * np.linalg.norm(pca_mean))))
+                angle = (180 / 3.14) * np.arccos(
+                    np.dot(c, pca_mean) / (np.linalg.norm(c) * np.linalg.norm(pca_mean))
+                )
                 angle = abs(angle)
-                angle = min(angle, 180.0-angle)
+                angle = min(angle, 180.0 - angle)
                 angles.append(float(angle))
             logger.info(f"pca_mean: {pca_mean}")
             angles_str = ", ".join(f"{i:.4f}°" for i in angles)
-            logger.info(f"Angles between the pca component vector and the vector to the pca_mean: {angles_str}")
-            if angles.index(min(angles)) != len(angles)-1:
-                #i.e. not the last one:
+            logger.info(
+                f"Angles between the pca component vector and the vector to the pca_mean: {angles_str}"
+            )
+            if angles.index(min(angles)) != len(angles) - 1:
+                # i.e. not the last one:
                 print("High variance along principal direction")
                 if self._history_bic:
-                    return self._history_bic[-1]
+                    return max(self._history_bic[-1], 2)
                 return self._dim_count
-        
+
         if self._dim_count > 1:
-            even_frac = 1.0 / (self._dim_count -1)
-            if all(abs((p - even_frac) / even_frac) < 0.05 for p in np.asarray(variance_ratios_current, dtype=float)[:-1]):
+            even_frac = 1.0 / (self._dim_count - 1)
+            if all(
+                abs((p - even_frac) / even_frac) < 0.05
+                for p in np.asarray(variance_ratios_current, dtype=float)[:-1]
+            ):
                 return None
 
         # Run snapshot detection on current variance ratio list
@@ -197,16 +209,16 @@ class DimensionAssessor:
         # eith 2 dimensions.
         self._history_bic.append(k_snapshot)
 
-        '''if self._dim_count >= self.test_start_dimension:
+        """if self._dim_count >= self.test_start_dimension:
             elbow = elbow_point(
                 list(range(1, self._dim_count + 1)), self._functional_values
             )
             logger.info(f"Current elbow point : {elbow}")
-            self._history_elbow.append(int(elbow))'''
+            self._history_elbow.append(int(elbow))"""
 
         # Consensus check
         tail = self._history_bic[-self.consensus_snapshots :]
-        #tail_elbow = self._history_elbow[-self.consensus_snapshots :]
+        # tail_elbow = self._history_elbow[-self.consensus_snapshots :]
 
         if (
             len(tail) == self.consensus_snapshots
@@ -215,7 +227,7 @@ class DimensionAssessor:
             and dBic > self.delta_bic_min
         ):
             return tail[-1]
-            '''if (
+            """if (
                 len(tail_elbow) == self.consensus_snapshots
                 and all(t is not None for t in tail_elbow)
                 and len(set(tail_elbow)) == 1
@@ -223,6 +235,6 @@ class DimensionAssessor:
                 if abs(tail_elbow[-1] - tail[-1]) <= 1:
                     # Having one too few dimensions is much worse than one too
                     # many, so go with the higher.
-                    return max(tail[-1], tail_elbow[-1])'''
+                    return max(tail[-1], tail_elbow[-1])"""
 
         return None
