@@ -42,12 +42,14 @@ pytest-xdist
 python-dateutil>=2.7.0
 reportlab
 requests
+scikit-image
 scikit-learn
 scipy
 scons
 setuptools
 six
 sphinx>=4
+sphinx-design
 sqlite
 tabulate
 tqdm

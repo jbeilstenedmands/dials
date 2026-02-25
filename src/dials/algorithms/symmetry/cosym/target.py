@@ -6,6 +6,7 @@ import concurrent.futures
 import copy
 import logging
 import time
+
 import numpy as np
 from ordered_set import OrderedSet
 from scipy import sparse
@@ -253,14 +254,9 @@ class Target:
         logger.debug(
             "Patterson group: %s", self._patterson_group.info().symbol_and_number()
         )
-        if cc_weights == "sigma":
-            self.rij_matrix, self.wij_matrix = self._compute_rij_wij_blockwise(
-                cc_weights=True
-            )
-        else:
-            self.rij_matrix, self.wij_matrix = self._compute_rij_wij_blockwise(
-                cc_weights=False
-            )
+        self.rij_matrix, self.wij_matrix = self._compute_rij_wij(
+            cc_weights=(cc_weights == "sigma"), nproc=self._nproc
+        )
 
     def set_dimensions(self, dimensions):
         """Set the number of dimensions for analysis.
@@ -301,7 +297,11 @@ class Target:
 
         return operators
 
-    def _compute_rij_wij_blockwise(self, cc_weights=True):
+    def _compute_rij_wij(
+        self, use_cache: bool = False, cc_weights: bool = False, nproc: int = 1
+    ):
+        # Note, use_cache is a historical parameter retained for compatibility
+        # with cctbx.xfel code.
         rij_matrix = None
         wij_matrix = None
 
@@ -311,7 +311,7 @@ class Target:
         logger.info(
             f"Calculating rij matrix elements in {len(self._lattices)} row-blocks"
         )
-        if self._nproc == 1:  # don't create a process pool
+        if nproc == 1:  # don't create a process pool
             for i, _ in enumerate(self._lattices):
                 rij, wij = _compute_rij_matrix_one_row_block(
                     i,
@@ -328,7 +328,7 @@ class Target:
         else:
             n = 0
             with concurrent.futures.ProcessPoolExecutor(
-                max_workers=min(self._nproc, len(self._lattices))
+                max_workers=min(nproc, len(self._lattices))
             ) as pool:
                 futures = [
                     pool.submit(
@@ -419,7 +419,7 @@ class Target:
             np.multiply(self.wij_matrix, elements, out=elements)
         f = 0.5 * elements.sum()
         t2 = time.time()
-        #logger.info(f"Time to compute functional {t2-t1:.6f}s")
+        # logger.info(f"Time to compute functional {t2-t1:.6f}s")
         return f
 
     def compute_functional_score_for_dimension_assessment(
@@ -484,7 +484,7 @@ class Target:
         else:
             grad = -2 * x @ (self.rij_matrix - x.T @ x)
         t2 = time.time()
-        #logger.info(f"Time to compute gradient {t2-t1:.6f}s")
+        # logger.info(f"Time to compute gradient {t2-t1:.6f}s")
         return grad.flatten()
 
     def curvatures(self, x: np.ndarray) -> np.ndarray:
@@ -508,7 +508,7 @@ class Target:
         x = x.reshape((self.dim, x.size // self.dim))
         curvs = 2 * np.square(x) @ wij
         t2 = time.time()
-        #logger.info(f"Time to compute curvs {t2-t1:.6f}s")
+        # logger.info(f"Time to compute curvs {t2-t1:.6f}s")
         return curvs.flatten()
 
     def curvatures_fd(self, x: np.ndarray, eps=1e-6) -> np.ndarray:
