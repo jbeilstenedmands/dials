@@ -149,7 +149,7 @@ def generate_test_data(
     return datasets, reindexing_ops
 
 
-def generate_intensities(crystal_symmetry, anomalous_flag=False, d_min=1):
+def generate_intensities(crystal_symmetry, anomalous_flag=False, d_min=1, wilson_B=20.0):
     from cctbx import miller
 
     indices = miller.index_generator(
@@ -159,7 +159,20 @@ def generate_intensities(crystal_symmetry, anomalous_flag=False, d_min=1):
         d_min,
     ).to_array()
     miller_set = crystal_symmetry.miller_set(indices, anomalous_flag)
-    intensities = flex.random_double(indices.size()) * 1000
+    from mmtbx.scaling.absolute_scaling import expected_intensity, scattering_information
+    dstarsq = 1 / (miller_set.d_spacings().data() **2)
+    expected = expected_intensity(
+        scattering_information(n_residues=200),
+        dstarsq,
+        b_wilson=wilson_B,
+        p_scale=1.0,
+    )
+
+
+    import random
+    intensities = flex.double([(0.8 + (random.random()*0.4)) *i for i in expected.mean_intensity])
+
+    #intensities = flex.random_double(indices.size()) * 1000
     miller_array = miller.array(
         miller_set, data=intensities, sigmas=flex.sqrt(intensities)
     ).set_observation_type_xray_intensity()
