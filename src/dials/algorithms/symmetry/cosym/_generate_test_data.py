@@ -192,7 +192,7 @@ def generate_intensities(
         )
 
     miller_array = miller.array(
-        miller_set, data=intensities, sigmas=flex.sqrt(intensities)
+        miller_set, data=intensities, sigmas=flex.sqrt(intensities) / 100
     ).set_observation_type_xray_intensity()
     return miller_array
 
