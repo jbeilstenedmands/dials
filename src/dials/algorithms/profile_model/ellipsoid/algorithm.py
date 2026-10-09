@@ -163,10 +163,28 @@ def initial_integrator(experiments, reflection_table):
     # some functions require an experimentlist, others just the experiment
     experiment = experiments[0]
     sel = reflection_table.get_flags(reflection_table.flags.strong)
-    strong_refls = reflection_table.select(sel)
-    strong_shoeboxes = copy.deepcopy(
-        strong_refls["shoebox"]
-    )  # Save the strong shoeboxes
+    if "shoebox" in reflection_table:
+        strong_refls = reflection_table.select(sel)
+        strong_shoeboxes = copy.deepcopy(
+            strong_refls["shoebox"]
+        )  # Save the strong shoeboxes
+    elif "bbox" in reflection_table:  # Extract shoeboxes to use in sigma_d estimation
+        ## Bbox z values need to be renumbered to 0-1 to enable re-extraction.
+        for i, b in enumerate(reflection_table["bbox"]):
+            reflection_table["bbox"][i] = (b[0], b[1], b[2], b[3], 0, 1)
+        assert set(reflection_table["bbox"].parts()[4]) == {0}
+        assert set(reflection_table["bbox"].parts()[5]) == {1}
+        reflection_table["shoebox"] = flex.shoebox(
+            reflection_table["panel"], reflection_table["bbox"], allocate=True
+        )
+        reflection_table.extract_shoeboxes(experiment.imageset)
+        strong_refls = reflection_table.select(sel)
+        strong_shoeboxes = None  # we do not have the valid && foreground mask
+        # to use in masking later on. The impact is that the covariance is
+        # calculated using data from the full box, rather than just the
+        # foreground, but this effect is typically small.
+    else:
+        raise RuntimeError("No shoebox or bbox in input reflection table")
 
     # Compute and initial spot size estimate and beam vector
     sigma_d = ComputeEsdBeamDivergence(experiment.detector, strong_refls).sigma()
