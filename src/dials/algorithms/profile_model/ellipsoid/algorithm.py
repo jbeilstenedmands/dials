@@ -439,6 +439,20 @@ def run_ellipsoid_refinement(
     # Construct the profile refiner data
     refiner_data = RefinerData.from_reflections(experiments[0], reflection_table)
     profile.parameterisation.n_obs = len(refiner_data.h_list)
+    logger.info(refiner_data.sobs_list)
+    cov_xx = refiner_data.sobs_list[0, 0, :]
+    cov_yy = refiner_data.sobs_list[1, 1, :]
+    cov_xy = refiner_data.sobs_list[0, 1, :]
+    reflection_table["spot_covariance_2d_packed"] = flex.vec3_double(
+        [(i, j, k) for i, j, k in zip(cov_xx, cov_yy, cov_xy)]
+    )
+    mobs_x = refiner_data.mobs_list[0, :]
+    mobs_y = refiner_data.mobs_list[1, :]
+    reflection_table["spot_mobs_2d"] = flex.vec2_double(
+        [(i, j) for i, j in zip(mobs_x, mobs_y)]
+    )
+    reflection_table["intensity.sum.value"] = flex.double(refiner_data.ctot_list)
+    return experiments, reflection_table, output_data
     # Do the refinement
     for _ in range(n_cycles):
         # refine the profile

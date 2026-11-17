@@ -103,6 +103,7 @@ class EllipsoidIntegrator(SimpleIntegrator):
                         experiment, initial_table, self.params
                     )
                     self.collector.collect_after_preprocess(experiment, table)
+
                 else:
                     # update the predictions and s1 vectors using the latest models
                     initial_table = predict_after_ellipsoid_refinement(
@@ -130,9 +131,11 @@ class EllipsoidIntegrator(SimpleIntegrator):
                         mosaicity_max_limit=self.params.profile.ellipsoid.refinement.mosaicity_max_limit,
                         max_cell_volume_change_fraction=self.params.profile.ellipsoid.refinement.max_cell_volume_change_fraction,
                     )
+
                 except BadSpotForIntegrationException as e:
                     raise RuntimeError(e)
                 else:
+                    return experiment, table, self.collector
                     self.collector.collect_after_refinement(
                         experiment, table, refiner_output["refiner_output"]["history"]
                     )
