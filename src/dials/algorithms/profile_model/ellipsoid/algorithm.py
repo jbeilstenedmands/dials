@@ -262,6 +262,14 @@ def final_integrator(
     reflection_table.compute_summed_intensity()
     reflection_table.compute_corrections(experiments)
     reflection_table.compute_centroid(experiments)
+    sbox = reflection_table["shoebox"]
+    from dials.algorithms.shoebox import MaskCode
+
+    nvalfg = sbox.count_mask_values(MaskCode.Valid | MaskCode.Foreground)
+    reflection_table["num_pixels.foreground"] = nvalfg
+    reflection_table["num_pixels.background"] = sbox.count_mask_values(
+        MaskCode.Valid | MaskCode.Background
+    )
 
     profile = experiment.crystal.mosaicity
     profile.parameterisation.compute_partiality(experiments, reflection_table)
